@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { Home, Activity, Users, User } from "lucide-react"
+import { Home, Activity, BarChart2, User } from "lucide-react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 
@@ -13,11 +13,12 @@ export default function NavBar() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
+      dir="rtl"
     >
-      <NavButton icon={<Home className="h-6 w-6" />} label="Home" href="/" />
-      <NavButton icon={<Activity className="h-6 w-6" />} label="Workout" href="/workout" active />
-      <NavButton icon={<Users className="h-6 w-6" />} label="Social" href="/social" />
-      <NavButton icon={<User className="h-6 w-6" />} label="Profile" href="/profile" />
+      <NavButton icon={<Home className="h-6 w-6" />} label="בית" href="/" />
+      <NavButton icon={<Activity className="h-6 w-6" />} label="אימון" href="/workout" active />
+      <NavButton icon={<BarChart2 className="h-6 w-6" />} label="סטטיסטיקות" href="/progress" />
+      <NavButton icon={<User className="h-6 w-6" />} label="פרופיל" href="/profile" />
     </motion.div>
   )
 }

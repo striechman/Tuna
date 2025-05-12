@@ -1,16 +1,26 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useRef, useEffect } from "react"
 import { AlertTriangle, Camera, RefreshCw, CameraOff } from "lucide-react"
 import { motion } from "framer-motion"
 import TnuaLogo from "@/components/ui/tnua-logo"
 import MockPoseTracker from "./mock-pose-tracker"
 
-export default function WorkoutCamera() {
+interface WorkoutCameraProps {
+  cameraRef?: React.RefObject<HTMLVideoElement>
+}
+
+export default function WorkoutCamera({ cameraRef }: WorkoutCameraProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("environment")
   const [cameraReady, setCameraReady] = useState(false)
+
+  // Internal ref if no external ref is provided
+  const internalCameraRef = useRef<HTMLVideoElement>(null)
+  const actualCameraRef = cameraRef || internalCameraRef
 
   // Timeout ref for loading state
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -74,19 +84,20 @@ export default function WorkoutCamera() {
         cameraFacing={cameraFacing}
         onError={handlePoseError}
         onCameraReady={handleCameraReady}
+        videoRef={actualCameraRef}
       />
 
       {/* Camera toggle button - made larger and more visible */}
       <motion.button
         onClick={toggleCamera}
-        className="absolute top-20 left-4 z-30 bg-tnua-green text-tnua-dark p-4 rounded-full shadow-lg"
+        className="absolute bottom-24 left-6 z-30 bg-tnua-green text-tnua-dark p-3 rounded-full shadow-lg"
         aria-label={cameraFacing === "user" ? "החלף למצלמה אחורית" : "החלף למצלמה קדמית"}
-        initial={{ opacity: 0, x: -20 }}
+        initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.3, delay: 0.3 }}
         whileTap={{ scale: 0.9 }}
       >
-        <Camera className="h-6 w-6" />
+        <Camera className="h-5 w-5" />
       </motion.button>
 
       {/* Loading indicator */}

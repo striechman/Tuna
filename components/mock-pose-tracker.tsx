@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useRef, useState, useCallback } from "react"
 
 interface MockPoseTrackerProps {
@@ -7,6 +9,7 @@ interface MockPoseTrackerProps {
   cameraFacing?: "user" | "environment"
   onError?: (error: string) => void
   onCameraReady?: () => void
+  videoRef?: React.RefObject<HTMLVideoElement>
 }
 
 export default function MockPoseTracker({
@@ -14,8 +17,11 @@ export default function MockPoseTracker({
   cameraFacing = "environment",
   onError,
   onCameraReady,
+  videoRef,
 }: MockPoseTrackerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const internalVideoRef = useRef<HTMLVideoElement>(null)
+  const actualVideoRef = videoRef || internalVideoRef
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,11 +30,11 @@ export default function MockPoseTracker({
 
   // Define setCanvasDimensions outside of initializePose so it's in scope for cleanup
   const setCanvasDimensions = useCallback(() => {
-    if (canvasRef.current && videoRef.current) {
-      canvasRef.current.width = videoRef.current.clientWidth
-      canvasRef.current.height = videoRef.current.clientHeight
+    if (canvasRef.current && actualVideoRef.current) {
+      canvasRef.current.width = actualVideoRef.current.clientWidth
+      canvasRef.current.height = actualVideoRef.current.clientHeight
     }
-  }, [])
+  }, [actualVideoRef])
 
   // Generate mock pose landmarks
   const generateMockPoseLandmarks = useCallback(() => {
@@ -174,7 +180,7 @@ export default function MockPoseTracker({
 
   // Function to start camera with specific constraints
   const startCamera = useCallback(async () => {
-    if (!videoRef.current) return
+    if (!actualVideoRef.current) return
 
     try {
       // Stop any existing stream
@@ -233,13 +239,13 @@ export default function MockPoseTracker({
       // Store the stream for later cleanup
       streamRef.current = stream
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
+      if (actualVideoRef.current) {
+        actualVideoRef.current.srcObject = stream
 
         // Wait for video to be ready
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current
+        actualVideoRef.current.onloadedmetadata = () => {
+          if (actualVideoRef.current) {
+            actualVideoRef.current
               .play()
               .then(() => {
                 console.log("Video playback started")
@@ -260,7 +266,7 @@ export default function MockPoseTracker({
           }
         }
 
-        videoRef.current.onerror = (e) => {
+        actualVideoRef.current.onerror = (e) => {
           console.error("Video element error:", e)
           setError(`Video element error: ${e}`)
           if (onError) {
@@ -276,7 +282,7 @@ export default function MockPoseTracker({
         onError(errorMessage)
       }
     }
-  }, [animateMockPose, cameraFacing, onCameraReady, onError])
+  }, [animateMockPose, cameraFacing, onCameraReady, onError, actualVideoRef])
 
   // Initialize camera and mock pose detection
   useEffect(() => {
@@ -284,7 +290,7 @@ export default function MockPoseTracker({
 
     const initializeCamera = async () => {
       try {
-        if (!videoRef.current || !canvasRef.current) return
+        if (!actualVideoRef.current || !canvasRef.current) return
 
         // Set canvas dimensions
         setCanvasDimensions()
@@ -327,7 +333,7 @@ export default function MockPoseTracker({
       // Remove event listener
       window.removeEventListener("resize", setCanvasDimensions)
     }
-  }, [animateMockPose, setCanvasDimensions, startCamera, onError])
+  }, [animateMockPose, setCanvasDimensions, startCamera, onError, actualVideoRef])
 
   // Effect to handle camera facing mode changes
   useEffect(() => {
@@ -339,7 +345,7 @@ export default function MockPoseTracker({
   return (
     <div className="relative w-full h-full">
       <video
-        ref={videoRef}
+        ref={actualVideoRef}
         className="absolute inset-0 w-full h-full object-cover bg-black"
         playsInline
         autoPlay
