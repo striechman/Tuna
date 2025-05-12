@@ -15,7 +15,7 @@ export default function WorkoutPage() {
   const router = useRouter()
   const [isMuted, setIsMuted] = useState(false)
   const [showEmergency, setShowEmergency] = useState(false)
-  const [currentExercise, setCurrentExercise] = useState("Squats")
+  const [currentExercise, setCurrentExercise] = useState("סקווטים")
   const [repCount, setRepCount] = useState(0)
   const [postureFeedback, setPostureFeedback] = useState("")
   const [workoutTime, setWorkoutTime] = useState(0)
@@ -23,7 +23,7 @@ export default function WorkoutPage() {
 
   // Simulate posture feedback and rep counting
   useEffect(() => {
-    const feedbackOptions = ["", "Keep your back straight", "Lower your hips more", "Keep your knees behind your toes"]
+    const feedbackOptions = ["", "שמור על הגב ישר", "הורד את הירכיים יותר", "שמור על הברכיים מאחורי כפות הרגליים"]
 
     const interval = setInterval(() => {
       const randomIndex = Math.floor(Math.random() * feedbackOptions.length)
@@ -69,7 +69,7 @@ export default function WorkoutPage() {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-tnua-dark text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-tnua-dark text-white overflow-hidden" dir="rtl">
       {/* Intro overlay */}
       {showIntro && (
         <motion.div
@@ -86,7 +86,7 @@ export default function WorkoutPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}
           >
-            <span className="text-tnua-green">Smart motion.</span> Real protection.
+            <span className="text-tnua-green">תנועה חכמה.</span> הגנה אמיתית.
           </motion.div>
           <motion.div
             className="text-gray-400 mt-2"
@@ -94,7 +94,7 @@ export default function WorkoutPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.7 }}
           >
-            Get ready to start...
+            מתכונן להתחיל...
           </motion.div>
         </motion.div>
       )}
@@ -103,7 +103,7 @@ export default function WorkoutPage() {
       <div className="flex-1 relative overflow-hidden">
         {/* Back button */}
         <motion.button
-          className="absolute top-4 left-4 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
+          className="absolute top-4 right-4 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
           onClick={() => router.push("/")}
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -114,7 +114,7 @@ export default function WorkoutPage() {
 
         {/* Share button */}
         <motion.button
-          className="absolute top-4 right-4 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
+          className="absolute top-4 left-4 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
@@ -130,7 +130,7 @@ export default function WorkoutPage() {
 
         {/* Workout timer */}
         <motion.div
-          className="absolute top-20 right-4 bg-tnua-gray/80 backdrop-blur-sm rounded-full px-4 py-2 z-20 flex items-center"
+          className="absolute top-20 left-4 bg-tnua-gray/80 backdrop-blur-sm rounded-full px-4 py-2 z-20 flex items-center"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
@@ -140,7 +140,7 @@ export default function WorkoutPage() {
 
         {/* Mute button */}
         <motion.button
-          className="absolute top-20 left-16 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
+          className="absolute top-20 right-16 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
           onClick={() => setIsMuted(!isMuted)}
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}

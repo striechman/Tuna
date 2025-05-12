@@ -6,18 +6,21 @@ interface MockPoseTrackerProps {
   onPoseDetected?: (landmarks: any[]) => void
   cameraFacing?: "user" | "environment"
   onError?: (error: string) => void
+  onCameraReady?: () => void
 }
 
 export default function MockPoseTracker({
   onPoseDetected,
   cameraFacing = "environment",
   onError,
+  onCameraReady,
 }: MockPoseTrackerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const animationFrameRef = useRef<number | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
   // Define setCanvasDimensions outside of initializePose so it's in scope for cleanup
   const setCanvasDimensions = useCallback(() => {
@@ -169,6 +172,112 @@ export default function MockPoseTracker({
     animationFrameRef.current = requestAnimationFrame(animateMockPose)
   }, [drawPoseLandmarks, generateMockPoseLandmarks, onPoseDetected])
 
+  // Function to start camera with specific constraints
+  const startCamera = useCallback(async () => {
+    if (!videoRef.current) return
+
+    try {
+      // Stop any existing stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
+      }
+
+      // Try to get all video devices
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoDevices = devices.filter((device) => device.kind === "videoinput")
+
+      console.log("Available video devices:", videoDevices)
+
+      // Set up constraints
+      let constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: cameraFacing,
+          width: { ideal: window.innerWidth },
+          height: { ideal: window.innerHeight },
+        },
+        audio: false,
+      }
+
+      // If we have specific device IDs, we can try to use them
+      if (videoDevices.length > 1) {
+        // For mobile devices, try to select the right camera based on facing mode
+        if (cameraFacing === "environment" && videoDevices.length > 1) {
+          // Try to use the back camera (usually the second camera on mobile devices)
+          constraints = {
+            video: {
+              deviceId: { ideal: videoDevices[videoDevices.length - 1].deviceId },
+              width: { ideal: window.innerWidth },
+              height: { ideal: window.innerHeight },
+            },
+            audio: false,
+          }
+        } else if (cameraFacing === "user" && videoDevices.length > 0) {
+          // Try to use the front camera (usually the first camera on mobile devices)
+          constraints = {
+            video: {
+              deviceId: { ideal: videoDevices[0].deviceId },
+              width: { ideal: window.innerWidth },
+              height: { ideal: window.innerHeight },
+            },
+            audio: false,
+          }
+        }
+      }
+
+      console.log("Using constraints:", constraints)
+
+      // Get user media with the constraints
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+      // Store the stream for later cleanup
+      streamRef.current = stream
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+
+        // Wait for video to be ready
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            videoRef.current
+              .play()
+              .then(() => {
+                console.log("Video playback started")
+                // Start mock pose detection
+                animationFrameRef.current = requestAnimationFrame(animateMockPose)
+                setIsInitialized(true)
+                if (onCameraReady) {
+                  onCameraReady()
+                }
+              })
+              .catch((err) => {
+                console.error("Error playing video:", err)
+                setError(`Error playing video: ${err.message}`)
+                if (onError) {
+                  onError(`Error playing video: ${err.message}`)
+                }
+              })
+          }
+        }
+
+        videoRef.current.onerror = (e) => {
+          console.error("Video element error:", e)
+          setError(`Video element error: ${e}`)
+          if (onError) {
+            onError(`Video element error: ${e}`)
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error accessing camera:", err)
+      const errorMessage = `Failed to access camera: ${err instanceof Error ? err.message : String(err)}`
+      setError(errorMessage)
+      if (onError) {
+        onError(errorMessage)
+      }
+    }
+  }, [animateMockPose, cameraFacing, onCameraReady, onError])
+
   // Initialize camera and mock pose detection
   useEffect(() => {
     let isMounted = true
@@ -181,31 +290,8 @@ export default function MockPoseTracker({
         setCanvasDimensions()
         window.addEventListener("resize", setCanvasDimensions)
 
-        // Get user media
-        const constraints = {
-          video: {
-            facingMode: cameraFacing,
-            width: { ideal: window.innerWidth },
-            height: { ideal: window.innerHeight },
-          },
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints)
-
-        if (videoRef.current && isMounted) {
-          videoRef.current.srcObject = stream
-
-          // Wait for video to be ready
-          videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current) {
-              videoRef.current.play()
-
-              // Start mock pose detection
-              animationFrameRef.current = requestAnimationFrame(animateMockPose)
-              setIsInitialized(true)
-            }
-          }
-        }
+        // Start the camera
+        await startCamera()
       } catch (err) {
         console.error("Error initializing camera:", err)
         const errorMessage = `Failed to access camera: ${err instanceof Error ? err.message : String(err)}`
@@ -234,48 +320,21 @@ export default function MockPoseTracker({
       }
 
       // Stop camera
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream
-        stream.getTracks().forEach((track) => track.stop())
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
       }
 
       // Remove event listener
       window.removeEventListener("resize", setCanvasDimensions)
     }
-  }, [animateMockPose, cameraFacing, onError, setCanvasDimensions])
+  }, [animateMockPose, setCanvasDimensions, startCamera, onError])
 
   // Effect to handle camera facing mode changes
   useEffect(() => {
-    if (isInitialized && videoRef.current && videoRef.current.srcObject) {
-      // Stop current stream
-      const stream = videoRef.current.srcObject as MediaStream
-      stream.getTracks().forEach((track) => track.stop())
-
-      // Reinitialize with new facing mode
-      navigator.mediaDevices
-        .getUserMedia({
-          video: {
-            facingMode: cameraFacing,
-            width: { ideal: window.innerWidth },
-            height: { ideal: window.innerHeight },
-          },
-        })
-        .then((newStream) => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = newStream
-            videoRef.current.play()
-          }
-        })
-        .catch((err) => {
-          console.error("Error switching camera:", err)
-          const errorMessage = `Failed to switch camera: ${err instanceof Error ? err.message : String(err)}`
-          setError(errorMessage)
-          if (onError) {
-            onError(errorMessage)
-          }
-        })
+    if (isInitialized) {
+      startCamera()
     }
-  }, [cameraFacing, isInitialized, onError])
+  }, [cameraFacing, isInitialized, startCamera])
 
   return (
     <div className="relative w-full h-full">
@@ -293,7 +352,7 @@ export default function MockPoseTracker({
           <div className="bg-tnua-gray/80 p-4 rounded-md max-w-md text-center">
             <p className="text-white mb-2">{error}</p>
             <button className="tnua-button-primary py-2 px-4" onClick={() => window.location.reload()}>
-              Try Again
+              נסה שוב
             </button>
           </div>
         </div>

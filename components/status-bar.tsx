@@ -13,7 +13,7 @@ export default function StatusBar({
 }) {
   // Format exercise name for display
   const formatExerciseName = (name: string) => {
-    if (!name || name === "unknown") return "Ready"
+    if (!name || name === "unknown") return "מוכן"
 
     // Convert snake_case or camelCase to Title Case with spaces
     return name
@@ -29,19 +29,20 @@ export default function StatusBar({
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
+      dir="rtl"
     >
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-xl font-bold text-white">{formatExerciseName(exercise)}</h2>
           <div className="flex items-center mt-1">
             <span className="text-3xl font-bold text-tnua-green">{repCount}</span>
-            <span className="text-gray-300 ml-2">reps</span>
+            <span className="text-gray-300 mr-2">חזרות</span>
           </div>
         </div>
 
         {postureFeedback && (
           <motion.div
-            className="bg-tnua-gray/80 border-l-4 border-tnua-green rounded-r-md px-3 py-2 max-w-[60%]"
+            className="bg-tnua-gray/80 border-r-4 border-tnua-green rounded-l-md px-3 py-2 max-w-[60%]"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.2 }}
