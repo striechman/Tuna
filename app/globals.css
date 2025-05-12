@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 5, 5, 5;
+  --background-end-rgb: 10, 10, 10;
+
+  --primary: 84 100% 50%;
+  --primary-foreground: 0 0% 0%;
+
+  --secondary: 240 10% 3.9%;
+  --secondary-foreground: 0 0% 98%;
+
+  --accent: 84 100% 50%;
+  --accent-foreground: 0 0% 0%;
+
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+
+  --muted: 240 5% 15%;
+  --muted-foreground: 240 5% 65%;
+
+  --destructive: 0 100% 50%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 240 5% 15%;
+  --input: 240 5% 15%;
+  --ring: 84 100% 50%;
+
+  --radius: 0.5rem;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(to bottom, transparent, rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
+  overscroll-behavior: none;
+  font-family: "Inter", sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .tnua-card {
+    @apply bg-tnua-gray rounded-xl border border-tnua-lightgray/50 shadow-lg overflow-hidden;
+  }
+
+  .tnua-button {
+    @apply rounded-md font-medium transition-all duration-200 flex items-center justify-center;
+  }
+
+  .tnua-button-primary {
+    @apply tnua-button bg-tnua-neon text-tnua-dark hover:brightness-110 active:scale-95 font-bold;
+  }
+
+  .tnua-button-secondary {
+    @apply tnua-button bg-tnua-gray text-white hover:bg-tnua-lightgray active:scale-95;
+  }
+
+  .tnua-input {
+    @apply bg-tnua-gray/50 border border-tnua-lightgray rounded-md px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-tnua-neon/50;
+  }
+
+  .tnua-progress {
+    @apply h-1.5 bg-tnua-lightgray rounded-full overflow-hidden;
+  }
+
+  .tnua-progress-bar {
+    @apply h-full bg-tnua-neon;
+  }
+}
+
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
