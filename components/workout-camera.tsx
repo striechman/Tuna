@@ -11,7 +11,7 @@ export default function WorkoutCamera() {
   const [cameraActive, setCameraActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("environment")
+  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user")
 
   // Start camera when component mounts
   useEffect(() => {
@@ -113,7 +113,7 @@ export default function WorkoutCamera() {
     ]
 
     // Draw joints
-    ctx.fillStyle = "#CCFF00"
+    ctx.fillStyle = "#00E676"
     joints.forEach((joint) => {
       ctx.beginPath()
       ctx.arc(joint.x, joint.y, 6, 0, Math.PI * 2)
@@ -121,7 +121,7 @@ export default function WorkoutCamera() {
     })
 
     // Draw connecting lines
-    ctx.strokeStyle = "#CCFF00"
+    ctx.strokeStyle = "#00E676"
     ctx.lineWidth = 3
 
     // Connect head to neck
@@ -202,7 +202,7 @@ export default function WorkoutCamera() {
       {/* Camera toggle button */}
       <button
         onClick={toggleCamera}
-        className="absolute top-20 left-4 z-20 bg-tnua-gray text-white p-3 rounded-lg"
+        className="absolute top-20 left-4 z-20 bg-tnua-gray/80 text-white p-3 rounded-full"
         aria-label="Toggle camera"
       >
         <Camera className="h-5 w-5" />
@@ -219,10 +219,10 @@ export default function WorkoutCamera() {
         >
           <TnuaLogo size="lg" className="mb-8" />
           <div className="relative">
-            <RefreshCw className="h-10 w-10 text-tnua-neon animate-spin" />
-            <div className="absolute inset-0 bg-tnua-neon opacity-20 blur-xl rounded-full animate-pulse-slow"></div>
+            <RefreshCw className="h-10 w-10 text-tnua-green animate-spin" />
+            <div className="absolute inset-0 bg-tnua-green opacity-20 blur-xl rounded-full animate-pulse-slow"></div>
           </div>
-          <p className="mt-6 text-lg font-bold">LOADING POSE DETECTION</p>
+          <p className="mt-6 text-lg font-medium">Loading pose detection...</p>
           <p className="text-gray-400 text-sm mt-2">Preparing your workout experience</p>
         </motion.div>
       )}
@@ -230,14 +230,14 @@ export default function WorkoutCamera() {
       {/* Error message or camera access prompt */}
       {!cameraActive && !isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-tnua-dark z-30">
-          <div className="text-center p-6 bg-tnua-gray rounded-xl max-w-md mx-auto">
-            <AlertTriangle className="h-12 w-12 text-tnua-neon mx-auto mb-4" />
-            <p className="text-xl font-bold mb-2">{error || "Camera access required"}</p>
+          <div className="text-center p-6 bg-tnua-gray/80 rounded-lg max-w-md mx-auto">
+            <AlertTriangle className="h-12 w-12 text-tnua-green mx-auto mb-4" />
+            <p className="text-xl font-medium mb-2">{error || "Camera access required"}</p>
             <p className="text-gray-400 mb-6">
               {error ? "Please refresh and try again" : "Please allow camera access to use TNUA workout tracking"}
             </p>
             <button onClick={() => window.location.reload()} className="tnua-button-primary py-3 px-6">
-              TRY AGAIN
+              Try Again
             </button>
           </div>
         </div>

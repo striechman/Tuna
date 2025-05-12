@@ -38,15 +38,15 @@ export default function AudioFeedback({
   return (
     <motion.div
       id="audio-indicator"
-      className="absolute bottom-24 left-4 bg-tnua-gray/90 backdrop-blur-md rounded-lg p-2 z-20 flex items-center"
+      className="absolute bottom-24 left-4 bg-tnua-gray/80 backdrop-blur-md rounded-md p-2 z-20 flex items-center"
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="w-8 h-8 rounded-lg bg-tnua-neon/20 flex items-center justify-center mr-2">
-        <Volume2 className="h-4 w-4 text-tnua-neon" />
+      <div className="w-8 h-8 rounded-full bg-tnua-green/20 flex items-center justify-center mr-2">
+        <Volume2 className="h-4 w-4 text-tnua-green" />
       </div>
-      <span className="text-sm font-bold text-white uppercase">Audio feedback active</span>
+      <span className="text-sm font-medium text-white">Audio feedback active</span>
     </motion.div>
   )
 }

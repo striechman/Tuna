@@ -11,15 +11,14 @@ const config = {
   ],
   prefix: "",
   theme: {
-    container: {
-      center: true,
-      padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
-    },
     extend: {
       colors: {
+        tnua: {
+          green: "#00E676",
+          dark: "#121212",
+          gray: "#2A2A2A",
+          light: "#F5F5F5",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -53,18 +52,6 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        tnua: {
-          neon: "#CCFF00",
-          dark: "#0A0A0A",
-          darker: "#050505",
-          gray: "#1A1A1A",
-          lightgray: "#2A2A2A",
-        },
-      },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
         "accordion-down": {
@@ -81,15 +68,11 @@ const config = {
         },
         glow: {
           "0%, 100%": {
-            boxShadow: "0 0 5px rgba(204, 255, 0, 0.5), 0 0 10px rgba(204, 255, 0, 0.3)",
+            boxShadow: "0 0 5px rgba(0, 230, 118, 0.5), 0 0 10px rgba(0, 230, 118, 0.3)",
           },
           "50%": {
-            boxShadow: "0 0 20px rgba(204, 255, 0, 0.8), 0 0 30px rgba(204, 255, 0, 0.5)",
+            boxShadow: "0 0 20px rgba(0, 230, 118, 0.8), 0 0 30px rgba(0, 230, 118, 0.5)",
           },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-500px 0" },
-          "100%": { backgroundPosition: "500px 0" },
         },
       },
       animation: {
@@ -97,13 +80,6 @@ const config = {
         "accordion-up": "accordion-up 0.2s ease-out",
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         glow: "glow 2s ease-in-out infinite",
-        shimmer: "shimmer 2s infinite linear",
-      },
-      backgroundImage: {
-        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "gradient-conic": "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
-        shimmer:
-          "linear-gradient(to right, rgba(255, 255, 255, 0) 0, rgba(255, 255, 255, 0.2) 20%, rgba(255, 255, 255, 0.5) 60%, rgba(255, 255, 255, 0))",
       },
     },
   },

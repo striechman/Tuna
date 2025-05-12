@@ -6,7 +6,7 @@ import { motion } from "framer-motion"
 export default function EmergencyAlert({ onDismiss }: { onDismiss: () => void }) {
   return (
     <motion.div
-      className="absolute inset-x-4 top-1/4 bg-black/90 backdrop-blur-md rounded-xl border-l-4 border-red-500 p-5 z-30 shadow-lg"
+      className="absolute inset-x-4 top-1/4 bg-black/90 backdrop-blur-md rounded-md border-l-4 border-red-500 p-5 z-30 shadow-lg"
       initial={{ opacity: 0, y: -50 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
@@ -21,7 +21,7 @@ export default function EmergencyAlert({ onDismiss }: { onDismiss: () => void })
         </div>
 
         <div className="flex-1">
-          <h3 className="text-xl font-bold text-white">EMERGENCY ALERT</h3>
+          <h3 className="text-xl font-bold text-white">Emergency Alert</h3>
           <p className="text-gray-300 mt-1">Possible fall or unsafe position detected. Are you okay?</p>
           <p className="text-gray-300 mt-1">
             Emergency contacts will be notified in <span className="font-bold text-white">30 seconds</span> if not
@@ -30,14 +30,14 @@ export default function EmergencyAlert({ onDismiss }: { onDismiss: () => void })
 
           <div className="flex flex-col sm:flex-row gap-3 mt-5">
             <button
-              className="bg-white text-black py-3 px-6 font-bold rounded-lg hover:bg-white/90 active:scale-95"
+              className="bg-white text-black py-3 px-6 font-medium rounded-md hover:bg-white/90 active:scale-95"
               onClick={onDismiss}
             >
-              I'M OK - DISMISS
+              I'm OK - Dismiss
             </button>
 
-            <button className="bg-red-600 text-white py-3 px-6 font-bold rounded-lg hover:bg-red-700 active:scale-95 flex items-center justify-center">
-              <Phone className="h-4 w-4 mr-2" /> CALL EMERGENCY
+            <button className="bg-red-600 text-white py-3 px-6 font-medium rounded-md hover:bg-red-700 active:scale-95 flex items-center justify-center">
+              <Phone className="h-4 w-4 mr-2" /> Call Emergency Contact
             </button>
           </div>
         </div>
