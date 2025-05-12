@@ -41,15 +41,15 @@ export default function HamburgerMenu() {
   }
 
   const menuItems = [
-    { icon: <Home className="h-5 w-5 ml-3" />, label: "דף הבית", path: "/" },
-    { icon: <Activity className="h-5 w-5 ml-3" />, label: "אימון", path: "/workout" },
-    { icon: <BarChart2 className="h-5 w-5 ml-3" />, label: "סטטיסטיקות", path: "/progress" },
-    { icon: <Users className="h-5 w-5 ml-3" />, label: "סושיאל", path: "/social" },
-    { icon: <User className="h-5 w-5 ml-3" />, label: "פרופיל", path: "/profile" },
-    { icon: <Bell className="h-5 w-5 ml-3" />, label: "התראות", path: "/notifications" },
-    { icon: <Heart className="h-5 w-5 ml-3" />, label: "אנשי קשר לחירום", path: "/emergency-contacts" },
-    { icon: <Info className="h-5 w-5 ml-3" />, label: "אודות", path: "/about" },
-    { icon: <Settings className="h-5 w-5 ml-3" />, label: "הגדרות", path: "/settings" },
+    { icon: <Home className="h-5 w-5 mr-3" />, label: "Home", path: "/" },
+    { icon: <Activity className="h-5 w-5 mr-3" />, label: "Workout", path: "/workout" },
+    { icon: <BarChart2 className="h-5 w-5 mr-3" />, label: "Statistics", path: "/progress" },
+    { icon: <Users className="h-5 w-5 mr-3" />, label: "Social", path: "/social" },
+    { icon: <User className="h-5 w-5 mr-3" />, label: "Profile", path: "/profile" },
+    { icon: <Bell className="h-5 w-5 mr-3" />, label: "Notifications", path: "/notifications" },
+    { icon: <Heart className="h-5 w-5 mr-3" />, label: "Emergency Contacts", path: "/emergency-contacts" },
+    { icon: <Info className="h-5 w-5 mr-3" />, label: "About", path: "/about" },
+    { icon: <Settings className="h-5 w-5 mr-3" />, label: "Settings", path: "/settings" },
   ]
 
   return (
@@ -58,7 +58,7 @@ export default function HamburgerMenu() {
       <button
         className="menu-button fixed top-6 right-6 z-50 bg-tnua-gray/80 backdrop-blur-sm p-3 rounded-full shadow-lg"
         onClick={() => setIsOpen(!isOpen)}
-        aria-label="תפריט"
+        aria-label="Menu"
       >
         {isOpen ? <X className="h-6 w-6 text-white" /> : <Menu className="h-6 w-6 text-white" />}
       </button>
@@ -86,7 +86,7 @@ export default function HamburgerMenu() {
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
           >
-            <div className="flex flex-col h-full p-6" dir="rtl">
+            <div className="flex flex-col h-full p-6">
               {/* Logo */}
               <div className="py-6 border-b border-tnua-gray/30 mb-6">
                 <TnuaLogo size="md" />
@@ -111,8 +111,8 @@ export default function HamburgerMenu() {
 
               {/* Logout button */}
               <button className="flex items-center py-3 px-4 rounded-md text-red-400 hover:bg-red-500/10 transition-colors mt-auto">
-                <LogOut className="h-5 w-5 ml-3" />
-                <span className="text-lg">התנתק</span>
+                <LogOut className="h-5 w-5 mr-3" />
+                <span className="text-lg">Logout</span>
               </button>
             </div>
           </motion.div>

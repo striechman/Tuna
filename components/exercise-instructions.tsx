@@ -1,7 +1,8 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { X } from "lucide-react"
+import { X, ChevronRight, ChevronLeft } from "lucide-react"
+import { useState } from "react"
 
 interface ExerciseInstructionsProps {
   exercise: string
@@ -9,28 +10,49 @@ interface ExerciseInstructionsProps {
 }
 
 export default function ExerciseInstructions({ exercise, onClose }: ExerciseInstructionsProps) {
+  const [currentStep, setCurrentStep] = useState(0)
+
   // Exercise instructions data
   const exerciseData: Record<
     string,
     {
       title: string
-      steps: string[]
-      tips: string[]
-      image: string
+      steps: Array<{
+        instruction: string
+        tip: string
+        image: string
+      }>
     }
   > = {
-    סקווטים: {
-      title: "סקווטים",
+    Squats: {
+      title: "Squats",
       steps: [
-        "עמוד עם הרגליים ברוחב הכתפיים",
-        "החזק את הגב ישר והסתכל קדימה",
-        "הורד את הישבן לאחור ולמטה כאילו אתה מתיישב על כיסא",
-        "הקפד שהברכיים לא יעברו את קצות האצבעות",
-        "רד עד שהירכיים מקבילות לרצפה",
-        "דחוף דרך העקבים כדי לחזור למצב עמידה",
+        {
+          instruction: "Stand with feet shoulder-width apart",
+          tip: "Keep your feet parallel or slightly turned out",
+          image: "/images/squat-step1.jpg",
+        },
+        {
+          instruction: "Keep your back straight and look forward",
+          tip: "Maintain a lifted chest and neutral spine",
+          image: "/images/squat-step2.jpg",
+        },
+        {
+          instruction: "Lower your hips back and down",
+          tip: "Imagine sitting back into a chair behind you",
+          image: "/images/squat-step3.jpg",
+        },
+        {
+          instruction: "Lower until thighs are parallel to the floor",
+          tip: "Make sure your knees don't go past your toes",
+          image: "/images/squat-step4.jpg",
+        },
+        {
+          instruction: "Push through your heels to return to standing",
+          tip: "Breathe in as you lower, out as you rise",
+          image: "/images/squat-step5.jpg",
+        },
       ],
-      tips: ["שמור על הגב ישר לאורך כל התרגיל", "הקפד שהברכיים לא יתכופפו פנימה", "נשום פנימה בירידה, החוצה בעלייה"],
-      image: "/images/squat-instruction.jpg",
     },
     // Add more exercises as needed
   }
@@ -38,80 +60,110 @@ export default function ExerciseInstructions({ exercise, onClose }: ExerciseInst
   // Get the current exercise data or use default
   const currentExerciseData = exerciseData[exercise] || {
     title: exercise,
-    steps: ["עמוד בתנוחת המוצא", "בצע את התרגיל בהתאם להנחיות", "שמור על טכניקה נכונה"],
-    tips: ["שמור על נשימה סדירה", "הקפד על יציבה נכונה"],
-    image: "/images/default-exercise.jpg",
+    steps: [
+      {
+        instruction: "Stand in the starting position",
+        tip: "Maintain proper posture",
+        image: "/images/default-exercise.jpg",
+      },
+    ],
+  }
+
+  const totalSteps = currentExerciseData.steps.length
+  const currentStepData = currentExerciseData.steps[currentStep]
+
+  const nextStep = () => {
+    if (currentStep < totalSteps - 1) {
+      setCurrentStep(currentStep + 1)
+    } else {
+      onClose()
+    }
+  }
+
+  const prevStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1)
+    }
   }
 
   return (
     <motion.div
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex flex-col"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      dir="rtl"
     >
-      <motion.div
-        className="bg-tnua-dark rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      >
-        <div className="relative p-6">
-          <button
-            onClick={onClose}
-            className="absolute top-4 left-4 text-white/70 hover:text-white p-1"
-            aria-label="סגור"
-          >
-            <X className="h-6 w-6" />
-          </button>
+      {/* Header */}
+      <div className="flex justify-between items-center p-4 border-b border-gray-800">
+        <button onClick={onClose} className="p-2">
+          <X className="h-6 w-6 text-white" />
+        </button>
+        <h2 className="text-xl font-bold text-white">{currentExerciseData.title}</h2>
+        <div className="w-10"></div> {/* Spacer for alignment */}
+      </div>
 
-          <h2 className="text-2xl font-bold text-white mb-4">{currentExerciseData.title}</h2>
+      {/* Progress indicators */}
+      <div className="flex px-4 pt-2 gap-1">
+        {currentExerciseData.steps.map((_, index) => (
+          <div
+            key={index}
+            className={`h-1 flex-1 rounded-full ${index === currentStep ? "bg-tnua-green" : "bg-gray-700"}`}
+          ></div>
+        ))}
+      </div>
 
-          <div className="rounded-lg overflow-hidden mb-6 bg-tnua-gray/30">
-            <img
-              src={currentExerciseData.image || "/placeholder.svg"}
-              alt={currentExerciseData.title}
-              className="w-full h-48 object-cover"
-              onError={(e) => {
-                e.currentTarget.src = "/diverse-group-exercising.png"
-              }}
-            />
+      {/* Main content */}
+      <div className="flex-1 flex flex-col p-4">
+        {/* Step image */}
+        <div className="relative flex-1 mb-4 rounded-2xl overflow-hidden bg-gray-900 flex items-center justify-center">
+          <img
+            src={currentStepData.image || "/images/workout-tracking.png"}
+            alt={`Step ${currentStep + 1}`}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.currentTarget.src = "/images/workout-tracking.png"
+            }}
+          />
+
+          {/* Step number */}
+          <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm text-white font-bold rounded-full w-10 h-10 flex items-center justify-center">
+            {currentStep + 1}/{totalSteps}
           </div>
-
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-tnua-green mb-2">שלבי ביצוע</h3>
-            <ol className="space-y-2 text-white">
-              {currentExerciseData.steps.map((step, index) => (
-                <li key={index} className="flex">
-                  <span className="bg-tnua-green text-tnua-dark w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ml-3">
-                    {index + 1}
-                  </span>
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-
-          <div>
-            <h3 className="text-lg font-bold text-tnua-green mb-2">טיפים</h3>
-            <ul className="space-y-2 text-white">
-              {currentExerciseData.tips.map((tip, index) => (
-                <li key={index} className="flex items-start">
-                  <span className="text-tnua-green ml-2">•</span>
-                  <span>{tip}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <button onClick={onClose} className="mt-8 w-full bg-tnua-green text-tnua-dark font-bold py-3 rounded-md">
-            הבנתי, בואו נתחיל
-          </button>
         </div>
-      </motion.div>
+
+        {/* Step instructions */}
+        <div className="bg-gray-900 rounded-2xl p-6">
+          <h3 className="text-xl font-bold text-white mb-2">{currentStepData.instruction}</h3>
+          <p className="text-gray-400">{currentStepData.tip}</p>
+        </div>
+      </div>
+
+      {/* Navigation buttons */}
+      <div className="flex justify-between p-4">
+        {currentStep > 0 ? (
+          <button onClick={prevStep} className="bg-gray-800 text-white px-5 py-3 rounded-full flex items-center">
+            <ChevronLeft className="h-5 w-5 mr-1" />
+            Previous
+          </button>
+        ) : (
+          <div></div> // Empty div for spacing
+        )}
+
+        <button
+          onClick={nextStep}
+          className="bg-tnua-green text-black font-bold px-5 py-3 rounded-full flex items-center"
+        >
+          {currentStep < totalSteps - 1 ? (
+            <>
+              Next
+              <ChevronRight className="h-5 w-5 ml-1" />
+            </>
+          ) : (
+            "Finish"
+          )}
+        </button>
+      </div>
     </motion.div>
   )
 }

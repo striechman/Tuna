@@ -1,61 +1,30 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Volume2, VolumeX, ChevronLeft, Camera, Info } from "lucide-react"
+import { X, CheckCircle, AlertCircle, Info } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import WorkoutCamera from "@/components/workout-camera"
 import ExerciseInstructions from "@/components/exercise-instructions"
-import AudioFeedback from "@/components/audio-feedback"
 import EmergencyAlert from "@/components/emergency-alert"
-import TnuaLogo from "@/components/ui/tnua-logo"
-import HamburgerMenu from "@/components/hamburger-menu"
 import { useRouter } from "next/navigation"
+import Script from "next/script"
 
 export default function WorkoutPage() {
   const router = useRouter()
-  const [isMuted, setIsMuted] = useState(false)
   const [showEmergency, setShowEmergency] = useState(false)
-  const [currentExercise, setCurrentExercise] = useState("סקווטים")
+  const [currentExercise, setCurrentExercise] = useState("Squats")
   const [repCount, setRepCount] = useState(0)
   const [postureFeedback, setPostureFeedback] = useState("")
   const [workoutTime, setWorkoutTime] = useState(0)
   const [showIntro, setShowIntro] = useState(true)
   const [showInstructions, setShowInstructions] = useState(false)
-  const [capturedImage, setCapturedImage] = useState<string | null>(null)
-  const [isCapturingImage, setIsCapturingImage] = useState(false)
+  const [bodyPartsDetected, setBodyPartsDetected] = useState(false)
+  const [showBodyPartAlert, setShowBodyPartAlert] = useState(false)
+  const [exerciseCorrect, setExerciseCorrect] = useState(false)
+  const [showStoryControls, setShowStoryControls] = useState(true)
+  const [storyProgress, setStoryProgress] = useState(0)
 
-  const cameraRef = useRef<HTMLVideoElement>(null)
-
-  // Simulate posture feedback and rep counting
-  useEffect(() => {
-    const feedbackOptions = ["", "שמור על הגב ישר", "הורד את הירכיים יותר", "שמור על הברכיים מאחורי כפות הרגליים"]
-
-    const interval = setInterval(() => {
-      const randomIndex = Math.floor(Math.random() * feedbackOptions.length)
-      setPostureFeedback(feedbackOptions[randomIndex])
-
-      // Increment rep count occasionally
-      if (Math.random() > 0.7) {
-        setRepCount((prev) => prev + 1)
-      }
-
-      // Simulate emergency alert (rare)
-      if (Math.random() > 0.95 && !showEmergency) {
-        setShowEmergency(true)
-      }
-    }, 3000)
-
-    return () => clearInterval(interval)
-  }, [showEmergency])
-
-  // Track workout time
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setWorkoutTime((prev) => prev + 1)
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [])
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   // Format time as mm:ss
   const formatTime = (seconds: number) => {
@@ -73,56 +42,115 @@ export default function WorkoutPage() {
     return () => clearTimeout(timer)
   }, [])
 
-  // Function to capture image from camera
-  const captureImage = () => {
-    if (!cameraRef.current) return
+  // Track workout time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWorkoutTime((prev) => prev + 1)
+    }, 1000)
 
-    setIsCapturingImage(true)
+    return () => clearInterval(interval)
+  }, [])
 
-    // Create a canvas element
-    const canvas = document.createElement("canvas")
-    canvas.width = cameraRef.current.videoWidth
-    canvas.height = cameraRef.current.videoHeight
+  // Auto-hide story controls after 3 seconds of inactivity
+  useEffect(() => {
+    if (showStoryControls) {
+      const timer = setTimeout(() => {
+        setShowStoryControls(false)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [showStoryControls])
 
-    // Draw the video frame to the canvas
-    const ctx = canvas.getContext("2d")
-    if (ctx) {
-      ctx.drawImage(cameraRef.current, 0, 0, canvas.width, canvas.height)
+  // Handle pose detection status
+  const handlePoseDetectionStatus = (detected: boolean, landmarks: any[]) => {
+    setBodyPartsDetected(detected)
 
-      // Apply filters to enhance the image
-      ctx.filter = "contrast(1.1) brightness(1.05) saturate(1.2)"
-      ctx.drawImage(canvas, 0, 0)
-
-      // Convert to data URL
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.8)
-      setCapturedImage(dataUrl)
+    if (!detected && !showBodyPartAlert) {
+      setShowBodyPartAlert(true)
+      setTimeout(() => setShowBodyPartAlert(false), 3000)
     }
 
-    setIsCapturingImage(false)
+    // Simulate exercise recognition
+    if (detected) {
+      // This is where we would implement the actual exercise recognition logic
+      // based on the GitHub project: https://github.com/chrisprasanna/Exercise_Recognition_AI
+      const isCorrect = Math.random() > 0.3 // Simulate correct form detection
+      setExerciseCorrect(isCorrect)
+
+      // Increment rep count when exercise is done correctly
+      if (isCorrect && Math.random() > 0.7) {
+        setRepCount((prev) => prev + 1)
+      }
+
+      // Update posture feedback
+      if (!isCorrect) {
+        const feedbackOptions = [
+          "Keep your back straight",
+          "Lower your hips more",
+          "Keep your knees behind your toes",
+          "Lift your chest",
+          "Keep weight on your heels",
+        ]
+        const randomIndex = Math.floor(Math.random() * feedbackOptions.length)
+        setPostureFeedback(feedbackOptions[randomIndex])
+      } else {
+        setPostureFeedback("")
+      }
+    }
   }
 
+  // Update story progress
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStoryProgress((prev) => {
+        if (prev >= 100) return 100
+        return prev + 0.5
+      })
+    }, 100)
+
+    return () => clearInterval(interval)
+  }, [])
+
   return (
-    <div className="flex flex-col h-screen bg-tnua-dark text-white overflow-hidden" dir="rtl">
-      {/* Hamburger Menu */}
-      <HamburgerMenu />
+    <div
+      className="flex flex-col h-screen bg-black text-white overflow-hidden relative"
+      onClick={() => setShowStoryControls(true)}
+    >
+      {/* Load scripts directly in the component */}
+      <Script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js" strategy="afterInteractive" />
+      <Script
+        src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"
+        strategy="afterInteractive"
+      />
+
+      {/* Story progress bar */}
+      <div className="absolute top-0 left-0 right-0 z-50 p-2 flex gap-1">
+        <div className="h-1 bg-white/30 rounded-full flex-1 overflow-hidden">
+          <motion.div
+            className="h-full bg-white rounded-full"
+            initial={{ width: "0%" }}
+            animate={{ width: `${storyProgress}%` }}
+            transition={{ ease: "linear" }}
+          />
+        </div>
+      </div>
 
       {/* Intro overlay */}
       {showIntro && (
         <motion.div
-          className="absolute inset-0 z-50 bg-tnua-dark flex flex-col items-center justify-center"
+          className="absolute inset-0 z-50 bg-black flex flex-col items-center justify-center"
           initial={{ opacity: 1 }}
           animate={{ opacity: 0 }}
           transition={{ duration: 0.5, delay: 2.5 }}
           onAnimationComplete={() => setShowIntro(false)}
         >
-          <TnuaLogo size="lg" className="mb-6" />
           <motion.div
-            className="text-2xl font-bold"
+            className="text-4xl font-bold"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}
           >
-            <span className="text-tnua-green">תנועה חכמה.</span> הגנה אמיתית.
+            <span className="text-tnua-green">TNUA</span> FITNESS
           </motion.div>
           <motion.div
             className="text-gray-400 mt-2"
@@ -130,110 +158,118 @@ export default function WorkoutPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.7 }}
           >
-            מתכונן להתחיל...
+            Getting ready...
           </motion.div>
         </motion.div>
       )}
 
       {/* Main workout area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Back button */}
-        <motion.button
-          className="absolute top-6 left-6 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
-          onClick={() => router.push("/")}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </motion.button>
+        {/* Camera feed */}
+        <WorkoutCamera videoRef={videoRef} onPoseDetectionStatus={handlePoseDetectionStatus} />
 
-        {/* Exercise info button */}
-        <motion.button
-          className="absolute top-6 left-20 z-20 bg-tnua-gray/80 text-white p-2 rounded-full"
-          onClick={() => setShowInstructions(!showInstructions)}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-        >
-          <Info className="h-5 w-5" />
-        </motion.button>
-
-        {/* Camera feed or captured image */}
-        {capturedImage ? (
-          <div className="relative w-full h-full">
-            <img src={capturedImage || "/placeholder.svg"} alt="Captured pose" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-tnua-dark via-transparent to-transparent" />
-
-            {/* Return to camera button */}
-            <button
-              className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-tnua-green text-tnua-dark font-bold py-3 px-6 rounded-full shadow-lg"
-              onClick={() => setCapturedImage(null)}
-            >
-              חזור למצלמה
-            </button>
-          </div>
-        ) : (
-          <>
-            <WorkoutCamera cameraRef={cameraRef} />
-
-            {/* Capture image button */}
-            <motion.button
-              className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-tnua-green text-tnua-dark font-bold py-3 px-6 rounded-full shadow-lg flex items-center"
-              onClick={captureImage}
-              disabled={isCapturingImage}
-              whileTap={{ scale: 0.95 }}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-            >
-              <Camera className="ml-2 h-5 w-5" />
-              צלם תמונה
-            </motion.button>
-          </>
-        )}
-
-        {/* Exercise header */}
-        <motion.div
-          className="absolute top-0 left-0 right-0 bg-gradient-to-b from-tnua-dark/90 to-transparent pt-20 pb-10 px-6 z-10"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <h1 className="text-3xl font-bold text-white">{currentExercise}</h1>
-          <div className="flex items-center mt-2">
-            <span className="text-4xl font-bold text-tnua-green">{repCount}</span>
-            <span className="text-gray-300 mr-2 text-lg">חזרות</span>
-            <span className="ml-auto text-white bg-tnua-gray/50 px-3 py-1 rounded-full text-sm">
-              {formatTime(workoutTime)}
-            </span>
-          </div>
-
-          {postureFeedback && (
+        {/* Instagram-like UI elements */}
+        <AnimatePresence>
+          {showStoryControls && (
             <motion.div
-              className="mt-4 bg-tnua-gray/70 border-r-4 border-tnua-green rounded-md px-4 py-3"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
+              className="absolute inset-0 z-20 pointer-events-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
             >
-              <p className="text-white font-medium">{postureFeedback}</p>
+              {/* Top controls */}
+              <div className="absolute top-0 left-0 right-0 pt-8 px-4 flex justify-between items-center pointer-events-auto">
+                <button className="bg-black/40 backdrop-blur-sm p-2 rounded-full" onClick={() => router.push("/")}>
+                  <X className="h-6 w-6" />
+                </button>
+
+                <div className="flex gap-3">
+                  <button
+                    className="bg-black/40 backdrop-blur-sm p-2 rounded-full"
+                    onClick={() => setShowInstructions(true)}
+                  >
+                    <Info className="h-6 w-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Exercise info */}
+              <div className="absolute top-20 left-4 bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold">{currentExercise}</span>
+                  <span className="text-tnua-green text-xl font-bold">{repCount}</span>
+                </div>
+              </div>
+
+              {/* Workout timer */}
+              <div className="absolute top-20 right-4 bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full">
+                <span className="text-lg font-bold">{formatTime(workoutTime)}</span>
+              </div>
+
+              {/* Body parts detection indicator */}
+              <div
+                className={`absolute top-36 left-4 bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full flex items-center gap-2 ${bodyPartsDetected ? "text-green-400" : "text-yellow-400"}`}
+              >
+                {bodyPartsDetected ? (
+                  <>
+                    <CheckCircle className="h-5 w-5" />
+                    <span>Body detected</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-5 w-5" />
+                    <span>Searching for body</span>
+                  </>
+                )}
+              </div>
+
+              {/* Posture feedback */}
+              {postureFeedback && (
+                <motion.div
+                  className="absolute bottom-32 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-sm px-6 py-3 rounded-full"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                >
+                  <p className="text-white font-medium text-lg">{postureFeedback}</p>
+                </motion.div>
+              )}
+
+              {/* Exercise status indicator */}
+              <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2">
+                <motion.div
+                  className={`w-16 h-16 rounded-full flex items-center justify-center ${exerciseCorrect ? "bg-green-500/20" : "bg-yellow-500/20"}`}
+                  animate={{ scale: [1, 1.1, 1], opacity: [0.7, 1, 0.7] }}
+                  transition={{ repeat: Number.POSITIVE_INFINITY, duration: 2 }}
+                >
+                  {exerciseCorrect ? (
+                    <CheckCircle className="h-8 w-8 text-green-400" />
+                  ) : (
+                    <AlertCircle className="h-8 w-8 text-yellow-400" />
+                  )}
+                </motion.div>
+              </div>
             </motion.div>
           )}
-        </motion.div>
+        </AnimatePresence>
 
-        {/* Mute button */}
-        <motion.button
-          className="absolute bottom-24 right-6 z-20 bg-tnua-gray/80 text-white p-3 rounded-full"
-          onClick={() => setIsMuted(!isMuted)}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3, delay: 0.3 }}
-        >
-          {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-        </motion.button>
-
-        {/* Audio feedback player */}
-        <AudioFeedback isMuted={isMuted} feedback={postureFeedback} />
+        {/* Body parts detection alert */}
+        <AnimatePresence>
+          {showBodyPartAlert && (
+            <motion.div
+              className="absolute top-1/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-md px-6 py-4 rounded-xl z-30 text-center"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: "spring", damping: 20 }}
+            >
+              <AlertCircle className="h-10 w-10 text-yellow-400 mx-auto mb-2" />
+              <p className="text-white font-bold text-lg mb-1">Not all body parts detected</p>
+              <p className="text-gray-300">Move away from the camera and make sure your full body is in frame</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Emergency alert */}
         {showEmergency && <EmergencyAlert onDismiss={() => setShowEmergency(false)} />}

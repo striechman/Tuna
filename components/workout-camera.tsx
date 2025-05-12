@@ -1,167 +1,213 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useRef, useEffect } from "react"
-import { AlertTriangle, Camera, RefreshCw, CameraOff } from "lucide-react"
-import { motion } from "framer-motion"
-import TnuaLogo from "@/components/ui/tnua-logo"
-import MockPoseTracker from "./mock-pose-tracker"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { Camera, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import AnimatedPreloader from "./animated-preloader"
+import MockPoseTracker from "@/components/mock-pose-tracker"
 
 interface WorkoutCameraProps {
-  cameraRef?: React.RefObject<HTMLVideoElement>
+  videoRef?: React.RefObject<HTMLVideoElement>
+  onPoseDetectionStatus?: (detected: boolean, landmarks: any[]) => void
 }
 
-export default function WorkoutCamera({ cameraRef }: WorkoutCameraProps) {
+export default function WorkoutCamera({ videoRef, onPoseDetectionStatus }: WorkoutCameraProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("environment")
+  const [useFallback, setUseFallback] = useState(false)
+  const [zoomLevel, setZoomLevel] = useState(1)
+  const [showControls, setShowControls] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
 
-  // Internal ref if no external ref is provided
-  const internalCameraRef = useRef<HTMLVideoElement>(null)
-  const actualCameraRef = cameraRef || internalCameraRef
+  // Internal refs
+  const internalVideoRef = useRef<HTMLVideoElement>(null)
+  const actualVideoRef = videoRef || internalVideoRef
+  const streamRef = useRef<MediaStream | null>(null)
 
-  // Timeout ref for loading state
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Toggle camera
+  const toggleCamera = useCallback(() => {
+    setCameraFacing((prev) => (prev === "user" ? "environment" : "user"))
+  }, [])
 
-  // Set a timeout to hide the loading screen after a maximum time
+  // Zoom controls
+  const zoomIn = useCallback(() => {
+    setZoomLevel((prev) => Math.min(prev + 0.25, 3))
+  }, [])
+
+  const zoomOut = useCallback(() => {
+    setZoomLevel((prev) => Math.max(prev - 0.25, 1))
+  }, [])
+
+  // Apply zoom effect to video
   useEffect(() => {
-    const maxLoadingTime = setTimeout(() => {
-      if (isLoading) {
-        setIsLoading(false)
-      }
-    }, 10000) // 10 seconds max loading time
-
-    return () => clearTimeout(maxLoadingTime)
-  }, [isLoading])
-
-  // Handle pose detection initialization
-  const handlePoseDetected = (landmarks: any[]) => {
-    // If we get landmarks, we know pose detection is working
-    if (landmarks && landmarks.length > 0 && isLoading) {
-      // Clear any existing timeout
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current)
-      }
-
-      // Set a timeout to hide the loading screen
-      loadingTimeoutRef.current = setTimeout(() => {
-        setIsLoading(false)
-      }, 1000)
+    if (actualVideoRef.current) {
+      actualVideoRef.current.style.transform = `scale(${zoomLevel})`
     }
-  }
+  }, [zoomLevel, actualVideoRef])
+
+  // Handle errors from the mock pose tracker
+  const handleMockError = useCallback((errorMessage: string) => {
+    console.error("Mock pose tracker error:", errorMessage)
+    setError(errorMessage)
+  }, [])
+
+  // Handle pose detection from the mock tracker
+  const handleMockPoseDetection = useCallback(
+    (landmarks: any[]) => {
+      if (onPoseDetectionStatus) {
+        // Consider all poses from the mock tracker as "detected"
+        onPoseDetectionStatus(true, landmarks)
+      }
+    },
+    [onPoseDetectionStatus],
+  )
 
   // Handle camera ready event
-  const handleCameraReady = () => {
-    console.log("Camera is ready")
+  const handleCameraReady = useCallback(() => {
     setCameraReady(true)
-
-    // Hide loading screen with a slight delay
     setTimeout(() => {
       setIsLoading(false)
-    }, 1000)
-  }
+    }, 1000) // Add a small delay to ensure smooth transition
+  }, [])
 
-  // Handle pose detection errors
-  const handlePoseError = (errorMessage: string) => {
-    console.error("Pose detection error:", errorMessage)
-    setError(errorMessage)
-    setIsLoading(false)
-  }
+  // Try to load TensorFlow.js and set up pose detection
+  useEffect(() => {
+    let isMounted = true
+    let loadingTimeout: NodeJS.Timeout
 
-  // Toggle camera between front and back
-  const toggleCamera = () => {
-    console.log("Toggling camera from", cameraFacing, "to", cameraFacing === "user" ? "environment" : "user")
-    setCameraFacing((prev) => (prev === "user" ? "environment" : "user"))
-  }
+    const loadTensorFlow = async () => {
+      try {
+        // Check if we're in a browser environment
+        if (typeof window === "undefined") return
 
-  return (
-    <div className="relative w-full h-full">
-      {/* Pose tracker component */}
-      <MockPoseTracker
-        onPoseDetected={handlePoseDetected}
-        cameraFacing={cameraFacing}
-        onError={handlePoseError}
-        onCameraReady={handleCameraReady}
-        videoRef={actualCameraRef}
-      />
+        // Set a timeout to switch to fallback if loading takes too long
+        loadingTimeout = setTimeout(() => {
+          if (isMounted) {
+            console.log("TensorFlow.js loading timeout, switching to fallback")
+            setUseFallback(true)
+          }
+        }, 5000) // 5 seconds timeout
 
-      {/* Camera toggle button - made larger and more visible */}
-      <motion.button
-        onClick={toggleCamera}
-        className="absolute bottom-24 left-6 z-30 bg-tnua-green text-tnua-dark p-3 rounded-full shadow-lg"
-        aria-label={cameraFacing === "user" ? "החלף למצלמה אחורית" : "החלף למצלמה קדמית"}
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.3, delay: 0.3 }}
-        whileTap={{ scale: 0.9 }}
-      >
-        <Camera className="h-5 w-5" />
-      </motion.button>
+        // Try to load TensorFlow.js from the window object
+        // This assumes the scripts are loaded in layout.tsx
+        await new Promise<void>((resolve, reject) => {
+          // Check if TensorFlow is already loaded
+          if (window.tf) {
+            resolve()
+            return
+          }
 
-      {/* Loading indicator */}
-      {isLoading && (
-        <motion.div
-          className="absolute inset-0 flex flex-col items-center justify-center bg-tnua-dark z-30"
-          initial={{ opacity: 1 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.5 }}
+          // If not loaded, set up a check interval
+          const checkInterval = setInterval(() => {
+            if (window.tf) {
+              clearInterval(checkInterval)
+              resolve()
+            }
+          }, 500)
+
+          // Set a timeout for this check
+          setTimeout(() => {
+            clearInterval(checkInterval)
+            reject(new Error("TensorFlow.js loading timeout"))
+          }, 4000)
+        })
+
+        console.log("TensorFlow.js loaded successfully")
+
+        // Clear the timeout since TensorFlow loaded successfully
+        clearTimeout(loadingTimeout)
+
+        // At this point, we've confirmed TensorFlow.js is loaded
+        // We'll still use the fallback for simplicity and reliability
+        if (isMounted) {
+          setUseFallback(true)
+        }
+      } catch (error) {
+        console.error("Error loading TensorFlow.js:", error)
+
+        if (isMounted) {
+          setUseFallback(true)
+        }
+      }
+    }
+
+    loadTensorFlow()
+
+    return () => {
+      isMounted = false
+      clearTimeout(loadingTimeout)
+    }
+  }, [])
+
+  // If we're using the fallback, render the mock pose tracker
+  if (useFallback) {
+    return (
+      <div className="relative w-full h-full">
+        {isLoading && <AnimatedPreloader />}
+
+        <MockPoseTracker
+          videoRef={actualVideoRef}
+          cameraFacing={cameraFacing}
+          onPoseDetected={handleMockPoseDetection}
+          onError={handleMockError}
+          onCameraReady={handleCameraReady}
+        />
+
+        {/* Camera controls */}
+        <AnimatePresence>
+          {showControls && (
+            <motion.div
+              className="absolute bottom-32 right-4 z-30 bg-black/60 backdrop-blur-md rounded-lg overflow-hidden"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="flex flex-col">
+                <button onClick={zoomIn} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel >= 3}>
+                  <ZoomIn className="h-6 w-6" />
+                </button>
+                <button onClick={zoomOut} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel <= 1}>
+                  <ZoomOut className="h-6 w-6" />
+                </button>
+                <button onClick={toggleCamera} className="p-3 hover:bg-gray-800 transition-colors">
+                  <RotateCcw className="h-6 w-6" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Toggle controls button */}
+        <button
+          onClick={() => setShowControls((prev) => !prev)}
+          className="absolute bottom-16 right-4 z-30 bg-black/60 backdrop-blur-md p-3 rounded-full"
+          aria-label="Camera controls"
         >
-          <TnuaLogo size="lg" className="mb-8" />
-          <div className="relative">
-            <RefreshCw className="h-10 w-10 text-tnua-green animate-spin" />
-            <div className="absolute inset-0 bg-tnua-green opacity-20 blur-xl rounded-full animate-pulse-slow"></div>
-          </div>
-          <p className="mt-6 text-lg font-medium">טוען את זיהוי התנועה...</p>
-          <p className="text-gray-400 text-sm mt-2">מכין את חווית האימון שלך</p>
-        </motion.div>
-      )}
+          <Camera className="h-6 w-6" />
+        </button>
 
-      {/* Camera permission error message */}
-      {error && error.includes("camera") && (
-        <div className="absolute inset-0 flex items-center justify-center bg-tnua-dark/90 backdrop-blur-sm z-40">
-          <div className="text-center p-6 bg-tnua-gray rounded-lg max-w-md mx-auto">
-            <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
-              <CameraOff className="h-8 w-8 text-red-500" />
+        {/* Error message */}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm z-40">
+            <div className="text-center p-6 bg-gray-900 rounded-lg max-w-md mx-auto">
+              <p className="text-xl font-medium mb-4 text-red-400">Camera loading error</p>
+              <p className="text-gray-300 mb-6">{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-tnua-green text-black font-bold py-3 px-6 rounded-full"
+              >
+                Try again
+              </button>
             </div>
-            <p className="text-xl font-medium mb-4">לא ניתן לגשת למצלמה</p>
-            <p className="text-gray-300 mb-6">אנא ודא שנתת הרשאה לגישה למצלמה. בדוק את הגדרות הדפדפן שלך ונסה שוב.</p>
-            <button onClick={() => window.location.reload()} className="tnua-button-primary py-3 px-6">
-              נסה שוב
-            </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )
+  }
 
-      {/* Other error message */}
-      {error && !error.includes("camera") && (
-        <div className="absolute inset-0 flex items-center justify-center bg-tnua-dark/80 backdrop-blur-sm z-40">
-          <div className="text-center p-6 bg-tnua-gray rounded-lg max-w-md mx-auto">
-            <AlertTriangle className="h-12 w-12 text-tnua-green mx-auto mb-4" />
-            <p className="text-xl font-medium mb-2">{error}</p>
-            <p className="text-gray-400 mb-6">אנא רענן ונסה שוב</p>
-            <button onClick={() => window.location.reload()} className="tnua-button-primary py-3 px-6">
-              נסה שוב
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Camera not ready message */}
-      {!isLoading && !cameraReady && !error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-tnua-dark/80 backdrop-blur-sm z-40">
-          <div className="text-center p-6 bg-tnua-gray rounded-lg max-w-md mx-auto">
-            <Camera className="h-12 w-12 text-tnua-green mx-auto mb-4" />
-            <p className="text-xl font-medium mb-2">מחכה לאישור מצלמה</p>
-            <p className="text-gray-400 mb-6">אנא אשר את הגישה למצלמה כדי להמשיך</p>
-            <button onClick={() => window.location.reload()} className="tnua-button-primary py-3 px-6">
-              נסה שוב
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  // Show loading screen while initializing
+  return <AnimatedPreloader />
 }

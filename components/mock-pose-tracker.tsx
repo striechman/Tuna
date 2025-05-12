@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useRef, useState, useCallback } from "react"
 
 interface MockPoseTrackerProps {
@@ -27,6 +26,7 @@ export default function MockPoseTracker({
   const [error, setError] = useState<string | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const [cameraAttempts, setCameraAttempts] = useState(0)
 
   // Define setCanvasDimensions outside of initializePose so it's in scope for cleanup
   const setCanvasDimensions = useCallback(() => {
@@ -143,8 +143,10 @@ export default function MockPoseTracker({
     ]
 
     // Draw connections
-    ctx.strokeStyle = "#00E676"
+    ctx.strokeStyle = "#00E0FF" // Blue glow color
     ctx.lineWidth = 4
+    ctx.shadowColor = "#00E0FF"
+    ctx.shadowBlur = 10
 
     connections.forEach(([start, end]) => {
       const startPoint = landmarks[start]
@@ -157,13 +159,16 @@ export default function MockPoseTracker({
     })
 
     // Draw landmarks
-    ctx.fillStyle = "#00E676"
+    ctx.fillStyle = "#00E0FF"
 
     landmarks.forEach((point) => {
       ctx.beginPath()
       ctx.arc(point.x * canvas.width, point.y * canvas.height, 6, 0, 2 * Math.PI)
       ctx.fill()
     })
+
+    // Reset shadow for performance
+    ctx.shadowBlur = 0
   }, [])
 
   // Animation loop for mock pose detection
@@ -199,8 +204,8 @@ export default function MockPoseTracker({
       let constraints: MediaStreamConstraints = {
         video: {
           facingMode: cameraFacing,
-          width: { ideal: window.innerWidth },
-          height: { ideal: window.innerHeight },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
         audio: false,
       }
@@ -213,8 +218,8 @@ export default function MockPoseTracker({
           constraints = {
             video: {
               deviceId: { ideal: videoDevices[videoDevices.length - 1].deviceId },
-              width: { ideal: window.innerWidth },
-              height: { ideal: window.innerHeight },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             },
             audio: false,
           }
@@ -223,8 +228,8 @@ export default function MockPoseTracker({
           constraints = {
             video: {
               deviceId: { ideal: videoDevices[0].deviceId },
-              width: { ideal: window.innerWidth },
-              height: { ideal: window.innerHeight },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             },
             audio: false,
           }
@@ -249,9 +254,17 @@ export default function MockPoseTracker({
               .play()
               .then(() => {
                 console.log("Video playback started")
+
+                // Set canvas dimensions after video is ready
+                if (canvasRef.current) {
+                  setCanvasDimensions()
+                }
+
                 // Start mock pose detection
                 animationFrameRef.current = requestAnimationFrame(animateMockPose)
                 setIsInitialized(true)
+
+                // Notify parent component that camera is ready
                 if (onCameraReady) {
                   onCameraReady()
                 }
@@ -261,6 +274,12 @@ export default function MockPoseTracker({
                 setError(`Error playing video: ${err.message}`)
                 if (onError) {
                   onError(`Error playing video: ${err.message}`)
+                }
+
+                // Try again with a different approach if we haven't tried too many times
+                if (cameraAttempts < 3) {
+                  setCameraAttempts((prev) => prev + 1)
+                  setTimeout(() => startCamera(), 1000)
                 }
               })
           }
@@ -281,8 +300,14 @@ export default function MockPoseTracker({
       if (onError) {
         onError(errorMessage)
       }
+
+      // Try again with a different approach if we haven't tried too many times
+      if (cameraAttempts < 3) {
+        setCameraAttempts((prev) => prev + 1)
+        setTimeout(() => startCamera(), 1000)
+      }
     }
-  }, [animateMockPose, cameraFacing, onCameraReady, onError, actualVideoRef])
+  }, [animateMockPose, cameraFacing, onCameraReady, onError, actualVideoRef, setCanvasDimensions, cameraAttempts])
 
   // Initialize camera and mock pose detection
   useEffect(() => {
@@ -291,10 +316,6 @@ export default function MockPoseTracker({
     const initializeCamera = async () => {
       try {
         if (!actualVideoRef.current || !canvasRef.current) return
-
-        // Set canvas dimensions
-        setCanvasDimensions()
-        window.addEventListener("resize", setCanvasDimensions)
 
         // Start the camera
         await startCamera()
@@ -342,6 +363,14 @@ export default function MockPoseTracker({
     }
   }, [cameraFacing, isInitialized, startCamera])
 
+  // Add resize event listener
+  useEffect(() => {
+    window.addEventListener("resize", setCanvasDimensions)
+    return () => {
+      window.removeEventListener("resize", setCanvasDimensions)
+    }
+  }, [setCanvasDimensions])
+
   return (
     <div className="relative w-full h-full">
       <video
@@ -358,7 +387,7 @@ export default function MockPoseTracker({
           <div className="bg-tnua-gray/80 p-4 rounded-md max-w-md text-center">
             <p className="text-white mb-2">{error}</p>
             <button className="tnua-button-primary py-2 px-4" onClick={() => window.location.reload()}>
-              נסה שוב
+              Try again
             </button>
           </div>
         </div>
