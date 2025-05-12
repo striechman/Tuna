@@ -27,6 +27,7 @@ export default function MockPoseTracker({
   const animationFrameRef = useRef<number | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [cameraAttempts, setCameraAttempts] = useState(0)
+  const [videoReady, setVideoReady] = useState(false)
 
   // Define setCanvasDimensions outside of initializePose so it's in scope for cleanup
   const setCanvasDimensions = useCallback(() => {
@@ -113,63 +114,66 @@ export default function MockPoseTracker({
   }, [])
 
   // Draw pose landmarks on canvas
-  const drawPoseLandmarks = useCallback((landmarks: any[]) => {
-    if (!canvasRef.current) return
+  const drawPoseLandmarks = useCallback(
+    (landmarks: any[]) => {
+      if (!canvasRef.current || !videoReady) return
 
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
+      const canvas = canvasRef.current
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // Draw connections (simplified)
-    const connections = [
-      // Torso
-      [11, 12],
-      [11, 23],
-      [12, 24],
-      [23, 24],
-      // Arms
-      [11, 13],
-      [13, 15],
-      [12, 14],
-      [14, 16],
-      // Legs
-      [23, 25],
-      [25, 27],
-      [24, 26],
-      [26, 28],
-    ]
+      // Draw connections (simplified)
+      const connections = [
+        // Torso
+        [11, 12],
+        [11, 23],
+        [12, 24],
+        [23, 24],
+        // Arms
+        [11, 13],
+        [13, 15],
+        [12, 14],
+        [14, 16],
+        // Legs
+        [23, 25],
+        [25, 27],
+        [24, 26],
+        [26, 28],
+      ]
 
-    // Draw connections
-    ctx.strokeStyle = "#00E0FF" // Blue glow color
-    ctx.lineWidth = 4
-    ctx.shadowColor = "#00E0FF"
-    ctx.shadowBlur = 10
+      // Draw connections
+      ctx.strokeStyle = "#00E0FF" // Blue glow color
+      ctx.lineWidth = 4
+      ctx.shadowColor = "#00E0FF"
+      ctx.shadowBlur = 10
 
-    connections.forEach(([start, end]) => {
-      const startPoint = landmarks[start]
-      const endPoint = landmarks[end]
+      connections.forEach(([start, end]) => {
+        const startPoint = landmarks[start]
+        const endPoint = landmarks[end]
 
-      ctx.beginPath()
-      ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height)
-      ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height)
-      ctx.stroke()
-    })
+        ctx.beginPath()
+        ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height)
+        ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height)
+        ctx.stroke()
+      })
 
-    // Draw landmarks
-    ctx.fillStyle = "#00E0FF"
+      // Draw landmarks
+      ctx.fillStyle = "#00E0FF"
 
-    landmarks.forEach((point) => {
-      ctx.beginPath()
-      ctx.arc(point.x * canvas.width, point.y * canvas.height, 6, 0, 2 * Math.PI)
-      ctx.fill()
-    })
+      landmarks.forEach((point) => {
+        ctx.beginPath()
+        ctx.arc(point.x * canvas.width, point.y * canvas.height, 6, 0, 2 * Math.PI)
+        ctx.fill()
+      })
 
-    // Reset shadow for performance
-    ctx.shadowBlur = 0
-  }, [])
+      // Reset shadow for performance
+      ctx.shadowBlur = 0
+    },
+    [videoReady],
+  )
 
   // Animation loop for mock pose detection
   const animateMockPose = useCallback(() => {
@@ -245,6 +249,12 @@ export default function MockPoseTracker({
       streamRef.current = stream
 
       if (actualVideoRef.current) {
+        // Set video properties before assigning srcObject
+        actualVideoRef.current.playsInline = true
+        actualVideoRef.current.muted = true
+        actualVideoRef.current.autoplay = true
+
+        // Assign the stream
         actualVideoRef.current.srcObject = stream
 
         // Wait for video to be ready
@@ -254,19 +264,23 @@ export default function MockPoseTracker({
               .play()
               .then(() => {
                 console.log("Video playback started")
+                setVideoReady(true)
 
                 // Set canvas dimensions after video is ready
                 if (canvasRef.current) {
-                  setCanvasDimensions()
-                }
+                  // Wait a bit to ensure video dimensions are stable
+                  setTimeout(() => {
+                    setCanvasDimensions()
 
-                // Start mock pose detection
-                animationFrameRef.current = requestAnimationFrame(animateMockPose)
-                setIsInitialized(true)
+                    // Start mock pose detection
+                    animationFrameRef.current = requestAnimationFrame(animateMockPose)
+                    setIsInitialized(true)
 
-                // Notify parent component that camera is ready
-                if (onCameraReady) {
-                  onCameraReady()
+                    // Notify parent component that camera is ready
+                    if (onCameraReady) {
+                      onCameraReady()
+                    }
+                  }, 500)
                 }
               })
               .catch((err) => {
@@ -359,6 +373,15 @@ export default function MockPoseTracker({
   // Effect to handle camera facing mode changes
   useEffect(() => {
     if (isInitialized) {
+      // Reset video ready state
+      setVideoReady(false)
+
+      // Stop animation
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+
+      // Restart camera with new facing mode
       startCamera()
     }
   }, [cameraFacing, isInitialized, startCamera])
