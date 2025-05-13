@@ -5,35 +5,41 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Camera, RotateCcw, ZoomIn, ZoomOut, Minus, Plus } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import AnimatedPreloader from "./animated-preloader"
-import MockPoseTracker from "@/components/mock-pose-tracker"
+import PoseRenderer from "./pose-renderer"
+import poseDetectionService, { type PoseData } from "@/services/pose-detection-service"
 
 interface WorkoutCameraProps {
   videoRef?: React.RefObject<HTMLVideoElement>
-  onPoseDetectionStatus?: (detected: boolean, landmarks: any[]) => void
+  onPoseDetectionStatus?: (detected: boolean, landmarks: PoseData[]) => void
+  onError?: (error: string) => void
 }
 
-export default function WorkoutCamera({ videoRef, onPoseDetectionStatus }: WorkoutCameraProps) {
+export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError }: WorkoutCameraProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("environment")
-  const [useFallback, setUseFallback] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
-  const [showControls, setShowControls] = useState(false)
+  const [showControls, setShowControls] = useState(true) // Start with controls visible
   const [cameraReady, setCameraReady] = useState(false)
-  const [isDraggingZoom, setIsDraggingZoom] = useState(false)
-  const [initialTouchY, setInitialTouchY] = useState(0)
-  const [initialZoom, setInitialZoom] = useState(1)
+  const [poses, setPoses] = useState<PoseData[]>([])
 
   // Internal refs
   const internalVideoRef = useRef<HTMLVideoElement>(null)
   const actualVideoRef = videoRef || internalVideoRef
-  const streamRef = useRef<MediaStream | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const zoomContainerRef = useRef<HTMLDivElement>(null)
 
   // Toggle camera
-  const toggleCamera = useCallback(() => {
-    setCameraFacing((prev) => (prev === "user" ? "environment" : "user"))
-  }, [])
+  const toggleCamera = useCallback(async () => {
+    const newFacingMode = cameraFacing === "user" ? "environment" : "user"
+    setCameraFacing(newFacingMode)
+
+    try {
+      await poseDetectionService.changeCameraFacingMode(newFacingMode)
+    } catch (error) {
+      console.error("Error toggling camera:", error)
+    }
+  }, [cameraFacing])
 
   // Zoom controls
   const zoomIn = useCallback(() => {
@@ -46,277 +52,235 @@ export default function WorkoutCamera({ videoRef, onPoseDetectionStatus }: Worko
 
   // Apply zoom effect to video
   useEffect(() => {
-    if (actualVideoRef.current) {
-      actualVideoRef.current.style.transform = `scale(${zoomLevel})`
-      actualVideoRef.current.style.transition = "transform 0.3s ease-out"
+    if (zoomContainerRef.current) {
+      zoomContainerRef.current.style.transform = `scale(${zoomLevel})`
+      zoomContainerRef.current.style.transition = "transform 0.3s ease-out"
     }
-  }, [zoomLevel, actualVideoRef])
+  }, [zoomLevel])
 
-  // Handle touch-based zoom
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
-      if (e.touches.length === 2) {
-        // Two finger touch - prepare for pinch zoom
-        const touch1 = e.touches[0]
-        const touch2 = e.touches[1]
-        const distance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY)
+  // Initialize pose detection service
+  useEffect(() => {
+    poseDetectionService.subscribe({
+      onPoseDetected: (detectedPoses) => {
+        // Check if valid poses were detected
+        const hasValidPose =
+          detectedPoses.length > 0 && detectedPoses[0].keypoints.length > 0 && detectedPoses[0].score > 0.2
 
-        setIsDraggingZoom(true)
-        setInitialTouchY(distance)
-        setInitialZoom(zoomLevel)
-      }
-    },
-    [zoomLevel],
-  )
+        // Update poses state
+        setPoses(detectedPoses)
 
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent) => {
-      if (isDraggingZoom && e.touches.length === 2) {
-        const touch1 = e.touches[0]
-        const touch2 = e.touches[1]
-        const distance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY)
+        // Notify parent component
+        if (onPoseDetectionStatus) {
+          onPoseDetectionStatus(hasValidPose, detectedPoses)
+        }
+      },
+      onError: (errorMessage) => {
+        console.error("Pose detection error:", errorMessage)
+        setError(errorMessage)
 
-        // Calculate zoom based on pinch distance
-        const zoomDelta = (distance - initialTouchY) / 200
-        const newZoom = Math.max(1, Math.min(3, initialZoom + zoomDelta))
-        setZoomLevel(newZoom)
-      }
-    },
-    [isDraggingZoom, initialTouchY, initialZoom],
-  )
+        // Pass error to parent component if callback exists
+        if (onError) {
+          onError(errorMessage)
+        }
+      },
+    })
 
-  const handleTouchEnd = useCallback(() => {
-    setIsDraggingZoom(false)
-  }, [])
+    // Initialize the service
+    poseDetectionService
+      .initialize()
+      .then((success) => {
+        if (!success) {
+          setError("Could not initialize pose detection")
+        }
+      })
+      .catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : "Unknown initialization error"
+        setError(errorMessage)
+        if (onError) onError(errorMessage)
+      })
 
-  // Handle errors from the mock pose tracker
-  const handleMockError = useCallback((errorMessage: string) => {
-    console.error("Mock pose tracker error:", errorMessage)
-    setError(errorMessage)
-  }, [])
+    return () => {
+      // Clean up on unmount
+      poseDetectionService.stopCamera()
+    }
+  }, [onPoseDetectionStatus, onError])
 
-  // Handle pose detection from the mock tracker
-  const handleMockPoseDetection = useCallback(
-    (landmarks: any[]) => {
-      if (onPoseDetectionStatus) {
-        // Consider all poses from the mock tracker as "detected"
-        onPoseDetectionStatus(true, landmarks)
-      }
-    },
-    [onPoseDetectionStatus],
-  )
-
-  // Handle camera ready event
-  const handleCameraReady = useCallback(() => {
-    setCameraReady(true)
-    setTimeout(() => {
-      setIsLoading(false)
-    }, 1500) // Add a small delay to ensure smooth transition
-  }, [])
-
-  // Try to load TensorFlow.js and set up pose detection
+  // Start camera when component mounts
   useEffect(() => {
     let isMounted = true
-    let loadingTimeout: NodeJS.Timeout
 
-    const loadTensorFlow = async () => {
+    // Only try to start camera if we have a video element
+    if (!actualVideoRef.current) return
+
+    // Wait a moment before starting camera
+    setTimeout(async () => {
+      if (!isMounted) return
+
       try {
-        // Check if we're in a browser environment
-        if (typeof window === "undefined") return
+        setIsLoading(true)
 
-        // Set a timeout to switch to fallback if loading takes too long
-        loadingTimeout = setTimeout(() => {
-          if (isMounted) {
-            console.log("TensorFlow.js loading timeout, switching to fallback")
-            setUseFallback(true)
-          }
-        }, 5000) // 5 seconds timeout
+        // Start camera
+        const success = await poseDetectionService.startCamera(actualVideoRef.current, cameraFacing)
 
-        // Try to load TensorFlow.js from the window object
-        // This assumes the scripts are loaded in layout.tsx
-        await new Promise<void>((resolve, reject) => {
-          // Check if TensorFlow is already loaded
-          if (window.tf) {
-            resolve()
-            return
-          }
-
-          // If not loaded, set up a check interval
-          const checkInterval = setInterval(() => {
-            if (window.tf) {
-              clearInterval(checkInterval)
-              resolve()
-            }
-          }, 500)
-
-          // Set a timeout for this check
+        if (success) {
+          // Camera started successfully
+          setCameraReady(true)
           setTimeout(() => {
-            clearInterval(checkInterval)
-            reject(new Error("TensorFlow.js loading timeout"))
-          }, 4000)
-        })
-
-        console.log("TensorFlow.js loaded successfully")
-
-        // Clear the timeout since TensorFlow loaded successfully
-        clearTimeout(loadingTimeout)
-
-        // At this point, we've confirmed TensorFlow.js is loaded
-        // We'll still use the fallback for simplicity and reliability
-        if (isMounted) {
-          setUseFallback(true)
+            if (isMounted) setIsLoading(false)
+          }, 1000)
+        } else {
+          // Failed to start camera
+          throw new Error("Failed to start camera")
         }
-      } catch (error) {
-        console.error("Error loading TensorFlow.js:", error)
-
-        if (isMounted) {
-          setUseFallback(true)
-        }
+      } catch (err) {
+        if (!isMounted) return
+        const errorMessage = err instanceof Error ? err.message : "Unknown camera error"
+        setError(errorMessage)
+        setIsLoading(false)
+        if (onError) onError(errorMessage)
       }
-    }
-
-    loadTensorFlow()
+    }, 500)
 
     return () => {
       isMounted = false
-      clearTimeout(loadingTimeout)
+      poseDetectionService.stopCamera()
     }
-  }, [])
+  }, [actualVideoRef, cameraFacing, onError])
 
-  // If we're using the fallback, render the mock pose tracker
-  if (useFallback) {
-    return (
-      <div
-        className="relative w-full h-full"
-        ref={containerRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {isLoading && <AnimatedPreloader />}
+  // Restart camera when facing mode changes
+  useEffect(() => {
+    if (cameraReady && actualVideoRef.current) {
+      poseDetectionService.changeCameraFacingMode(cameraFacing)
+    }
+  }, [cameraFacing, cameraReady, actualVideoRef])
 
-        <MockPoseTracker
-          videoRef={actualVideoRef}
-          cameraFacing={cameraFacing}
-          onPoseDetected={handleMockPoseDetection}
-          onError={handleMockError}
-          onCameraReady={handleCameraReady}
+  return (
+    <div className="relative w-full h-full overflow-hidden" ref={containerRef}>
+      {isLoading && <AnimatedPreloader />}
+
+      {/* Zoom container */}
+      <div ref={zoomContainerRef} className="absolute inset-0 w-full h-full origin-center">
+        <video
+          ref={actualVideoRef}
+          className="absolute inset-0 w-full h-full object-cover bg-black"
+          playsInline
+          muted
         />
+      </div>
 
-        {/* Zoom indicator */}
-        <AnimatePresence>
-          {zoomLevel > 1 && (
-            <motion.div
-              className="absolute top-24 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full z-30"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <span className="text-sm font-medium">{zoomLevel.toFixed(1)}x</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Render detected poses */}
+      <PoseRenderer poses={poses} videoRef={actualVideoRef} color="#00E0FF" lineWidth={4} pointRadius={6} />
 
-        {/* Camera controls */}
-        <AnimatePresence>
-          {showControls && (
-            <motion.div
-              className="absolute bottom-32 right-4 z-30 bg-black/60 backdrop-blur-md rounded-lg overflow-hidden"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex flex-col">
-                <button onClick={zoomIn} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel >= 3}>
-                  <ZoomIn className="h-6 w-6" />
-                </button>
-                <button onClick={zoomOut} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel <= 1}>
-                  <ZoomOut className="h-6 w-6" />
-                </button>
-                <button onClick={toggleCamera} className="p-3 hover:bg-gray-800 transition-colors">
-                  <RotateCcw className="h-6 w-6" />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Zoom indicator */}
+      <AnimatePresence>
+        {zoomLevel > 1 && (
+          <motion.div
+            className="absolute top-24 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full z-30"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <span className="text-sm font-medium">{zoomLevel.toFixed(1)}x</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        {/* Zoom slider (vertical) */}
-        <AnimatePresence>
-          {showControls && (
-            <motion.div
-              className="absolute bottom-32 left-4 z-30 bg-black/60 backdrop-blur-md rounded-full p-2 h-40"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex flex-col h-full items-center justify-between">
-                <button
-                  onClick={zoomIn}
-                  className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                  disabled={zoomLevel >= 3}
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-
-                <div className="flex-1 w-1 bg-gray-700 rounded-full my-2 relative">
-                  <div
-                    className="absolute bottom-0 left-0 right-0 bg-white rounded-full"
-                    style={{
-                      height: `${((zoomLevel - 1) / 2) * 100}%`,
-                    }}
-                  />
-                  <div
-                    className="absolute w-4 h-4 bg-white rounded-full left-1/2 transform -translate-x-1/2 -translate-y-1/2 border-2 border-gray-800"
-                    style={{
-                      bottom: `${((zoomLevel - 1) / 2) * 100}%`,
-                    }}
-                  />
-                </div>
-
-                <button
-                  onClick={zoomOut}
-                  className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                  disabled={zoomLevel <= 1}
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Toggle controls button */}
-        <button
-          onClick={() => setShowControls((prev) => !prev)}
-          className="absolute bottom-16 right-4 z-30 bg-black/60 backdrop-blur-md p-3 rounded-full"
-          aria-label="Camera controls"
-        >
-          <Camera className="h-6 w-6" />
-        </button>
-
-        {/* Error message */}
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm z-40">
-            <div className="text-center p-6 bg-gray-900 rounded-lg max-w-md mx-auto">
-              <p className="text-xl font-medium mb-4 text-red-400">Camera loading error</p>
-              <p className="text-gray-300 mb-6">{error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-tnua-green text-black font-bold py-3 px-6 rounded-full"
-              >
-                Try again
+      {/* Camera controls */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            className="absolute bottom-32 right-4 z-30 bg-black/60 backdrop-blur-md rounded-lg overflow-hidden"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="flex flex-col">
+              <button onClick={zoomIn} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel >= 3}>
+                <ZoomIn className="h-6 w-6" />
+              </button>
+              <button onClick={zoomOut} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel <= 1}>
+                <ZoomOut className="h-6 w-6" />
+              </button>
+              <button onClick={toggleCamera} className="p-3 hover:bg-gray-800 transition-colors">
+                <RotateCcw className="h-6 w-6" />
               </button>
             </div>
-          </div>
+          </motion.div>
         )}
-      </div>
-    )
-  }
+      </AnimatePresence>
 
-  // Show loading screen while initializing
-  return <AnimatedPreloader />
+      {/* Zoom slider (vertical) */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            className="absolute bottom-32 left-4 z-30 bg-black/60 backdrop-blur-md rounded-full p-2 h-40"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="flex flex-col h-full items-center justify-between">
+              <button
+                onClick={zoomIn}
+                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+                disabled={zoomLevel >= 3}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+
+              <div className="flex-1 w-1 bg-gray-700 rounded-full my-2 relative">
+                <div
+                  className="absolute bottom-0 left-0 right-0 bg-white rounded-full"
+                  style={{
+                    height: `${((zoomLevel - 1) / 2) * 100}%`,
+                  }}
+                />
+                <div
+                  className="absolute w-4 h-4 bg-white rounded-full left-1/2 transform -translate-x-1/2 -translate-y-1/2 border-2 border-gray-800"
+                  style={{
+                    bottom: `${((zoomLevel - 1) / 2) * 100}%`,
+                  }}
+                />
+              </div>
+
+              <button
+                onClick={zoomOut}
+                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+                disabled={zoomLevel <= 1}
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toggle controls button */}
+      <button
+        onClick={() => setShowControls((prev) => !prev)}
+        className="absolute bottom-16 right-4 z-30 bg-black/60 backdrop-blur-md p-3 rounded-full"
+        aria-label="Camera controls"
+      >
+        <Camera className="h-6 w-6" />
+      </button>
+
+      {/* Error message */}
+      {error && !onError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm z-40">
+          <div className="text-center p-6 bg-gray-900 rounded-lg max-w-md mx-auto">
+            <p className="text-xl font-medium mb-4 text-red-400">Camera loading error</p>
+            <p className="text-gray-300 mb-6">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-tnua-green text-black font-bold py-3 px-6 rounded-full"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

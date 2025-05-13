@@ -28,6 +28,7 @@ export default function MockPoseTracker({
   const streamRef = useRef<MediaStream | null>(null)
   const [cameraAttempts, setCameraAttempts] = useState(0)
   const [videoReady, setVideoReady] = useState(false)
+  const [useFallbackMode, setUseFallbackMode] = useState(false)
 
   // Define setCanvasDimensions outside of initializePose so it's in scope for cleanup
   const setCanvasDimensions = useCallback(() => {
@@ -114,66 +115,63 @@ export default function MockPoseTracker({
   }, [])
 
   // Draw pose landmarks on canvas
-  const drawPoseLandmarks = useCallback(
-    (landmarks: any[]) => {
-      if (!canvasRef.current || !videoReady) return
+  const drawPoseLandmarks = useCallback((landmarks: any[]) => {
+    if (!canvasRef.current) return
 
-      const canvas = canvasRef.current
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
 
-      // Clear canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      // Draw connections (simplified)
-      const connections = [
-        // Torso
-        [11, 12],
-        [11, 23],
-        [12, 24],
-        [23, 24],
-        // Arms
-        [11, 13],
-        [13, 15],
-        [12, 14],
-        [14, 16],
-        // Legs
-        [23, 25],
-        [25, 27],
-        [24, 26],
-        [26, 28],
-      ]
+    // Draw connections (simplified)
+    const connections = [
+      // Torso
+      [11, 12],
+      [11, 23],
+      [12, 24],
+      [23, 24],
+      // Arms
+      [11, 13],
+      [13, 15],
+      [12, 14],
+      [14, 16],
+      // Legs
+      [23, 25],
+      [25, 27],
+      [24, 26],
+      [26, 28],
+    ]
 
-      // Draw connections
-      ctx.strokeStyle = "#00E0FF" // Blue glow color
-      ctx.lineWidth = 4
-      ctx.shadowColor = "#00E0FF"
-      ctx.shadowBlur = 10
+    // Draw connections
+    ctx.strokeStyle = "#00E0FF" // Blue glow color
+    ctx.lineWidth = 4
+    ctx.shadowColor = "#00E0FF"
+    ctx.shadowBlur = 10
 
-      connections.forEach(([start, end]) => {
-        const startPoint = landmarks[start]
-        const endPoint = landmarks[end]
+    connections.forEach(([start, end]) => {
+      const startPoint = landmarks[start]
+      const endPoint = landmarks[end]
 
-        ctx.beginPath()
-        ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height)
-        ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height)
-        ctx.stroke()
-      })
+      ctx.beginPath()
+      ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height)
+      ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height)
+      ctx.stroke()
+    })
 
-      // Draw landmarks
-      ctx.fillStyle = "#00E0FF"
+    // Draw landmarks
+    ctx.fillStyle = "#00E0FF"
 
-      landmarks.forEach((point) => {
-        ctx.beginPath()
-        ctx.arc(point.x * canvas.width, point.y * canvas.height, 6, 0, 2 * Math.PI)
-        ctx.fill()
-      })
+    landmarks.forEach((point) => {
+      ctx.beginPath()
+      ctx.arc(point.x * canvas.width, point.y * canvas.height, 6, 0, 2 * Math.PI)
+      ctx.fill()
+    })
 
-      // Reset shadow for performance
-      ctx.shadowBlur = 0
-    },
-    [videoReady],
-  )
+    // Reset shadow for performance
+    ctx.shadowBlur = 0
+  }, [])
 
   // Animation loop for mock pose detection
   const animateMockPose = useCallback(() => {
@@ -187,6 +185,27 @@ export default function MockPoseTracker({
     animationFrameRef.current = requestAnimationFrame(animateMockPose)
   }, [drawPoseLandmarks, generateMockPoseLandmarks, onPoseDetected])
 
+  // Start fallback mode without camera
+  const startFallbackMode = useCallback(() => {
+    console.log("Starting fallback mode without camera")
+    setUseFallbackMode(true)
+
+    // Set canvas dimensions
+    if (canvasRef.current && containerRef.current) {
+      canvasRef.current.width = containerRef.current.clientWidth
+      canvasRef.current.height = containerRef.current.clientHeight
+    }
+
+    // Start animation loop
+    animationFrameRef.current = requestAnimationFrame(animateMockPose)
+    setIsInitialized(true)
+
+    // Notify parent component
+    if (onCameraReady) {
+      onCameraReady()
+    }
+  }, [animateMockPose, onCameraReady])
+
   // Function to start camera with specific constraints
   const startCamera = useCallback(async () => {
     if (!actualVideoRef.current) return
@@ -196,6 +215,12 @@ export default function MockPoseTracker({
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
         streamRef.current = null
+      }
+
+      // If we've tried too many times, use fallback mode
+      if (cameraAttempts >= 3) {
+        startFallbackMode()
+        return
       }
 
       // Try to get all video devices
@@ -252,58 +277,125 @@ export default function MockPoseTracker({
         // Set video properties before assigning srcObject
         actualVideoRef.current.playsInline = true
         actualVideoRef.current.muted = true
-        actualVideoRef.current.autoplay = true
 
-        // Assign the stream
-        actualVideoRef.current.srcObject = stream
+        // Don't set autoplay - we'll play manually after user interaction
+        actualVideoRef.current.autoplay = false
 
-        // Wait for video to be ready
-        actualVideoRef.current.onloadedmetadata = () => {
-          if (actualVideoRef.current) {
-            actualVideoRef.current
-              .play()
-              .then(() => {
-                console.log("Video playback started")
-                setVideoReady(true)
-
-                // Set canvas dimensions after video is ready
-                if (canvasRef.current) {
-                  // Wait a bit to ensure video dimensions are stable
-                  setTimeout(() => {
-                    setCanvasDimensions()
-
-                    // Start mock pose detection
-                    animationFrameRef.current = requestAnimationFrame(animateMockPose)
-                    setIsInitialized(true)
-
-                    // Notify parent component that camera is ready
-                    if (onCameraReady) {
-                      onCameraReady()
-                    }
-                  }, 500)
-                }
-              })
-              .catch((err) => {
-                console.error("Error playing video:", err)
-                setError(`Error playing video: ${err.message}`)
-                if (onError) {
-                  onError(`Error playing video: ${err.message}`)
-                }
-
-                // Try again with a different approach if we haven't tried too many times
-                if (cameraAttempts < 3) {
-                  setCameraAttempts((prev) => prev + 1)
-                  setTimeout(() => startCamera(), 1000)
-                }
-              })
+        // Create a new promise to handle video loading
+        const videoLoadPromise = new Promise<void>((resolve, reject) => {
+          if (!actualVideoRef.current) {
+            reject(new Error("Video element not available"))
+            return
           }
-        }
 
-        actualVideoRef.current.onerror = (e) => {
-          console.error("Video element error:", e)
-          setError(`Video element error: ${e}`)
+          // Set up event listeners
+          const loadedMetadataHandler = () => {
+            console.log("Video metadata loaded")
+            actualVideoRef.current?.removeEventListener("loadedmetadata", loadedMetadataHandler)
+            resolve()
+          }
+
+          const errorHandler = (e: Event) => {
+            console.error("Video element error during loading:", e)
+            actualVideoRef.current?.removeEventListener("error", errorHandler)
+            reject(new Error("Video loading error"))
+          }
+
+          // Add event listeners
+          actualVideoRef.current.addEventListener("loadedmetadata", loadedMetadataHandler)
+          actualVideoRef.current.addEventListener("error", errorHandler)
+
+          // Assign the stream
+          actualVideoRef.current.srcObject = stream
+        })
+
+        try {
+          // Wait for video metadata to load
+          await videoLoadPromise
+
+          // Now try to play the video - wrap in a user interaction check
+          const playVideo = async () => {
+            try {
+              if (!actualVideoRef.current) return
+
+              // Use a timeout to give the browser a moment
+              await new Promise((resolve) => setTimeout(resolve, 100))
+
+              const playPromise = actualVideoRef.current.play()
+
+              // The play() method returns a Promise
+              if (playPromise !== undefined) {
+                playPromise
+                  .then(() => {
+                    console.log("Video playback started successfully")
+                    setVideoReady(true)
+
+                    // Set canvas dimensions after video is ready
+                    if (canvasRef.current) {
+                      // Wait a bit to ensure video dimensions are stable
+                      setTimeout(() => {
+                        setCanvasDimensions()
+
+                        // Start mock pose detection
+                        animationFrameRef.current = requestAnimationFrame(animateMockPose)
+                        setIsInitialized(true)
+
+                        // Notify parent component that camera is ready
+                        if (onCameraReady) {
+                          onCameraReady()
+                        }
+                      }, 500)
+                    }
+                  })
+                  .catch((error) => {
+                    console.error("Error playing video:", error)
+
+                    // Check if it's an AbortError
+                    if (error.name === "AbortError") {
+                      console.log("Play was aborted. This is often due to lack of user interaction.")
+
+                      // Use fallback mode instead of retrying
+                      startFallbackMode()
+                      return
+                    }
+
+                    // Increment attempt counter
+                    setCameraAttempts((prev) => prev + 1)
+
+                    // Try with different approach or use fallback
+                    if (cameraAttempts < 2) {
+                      console.log(`Retrying camera initialization (attempt ${cameraAttempts + 1})`)
+                      setTimeout(() => startCamera(), 1000)
+                    } else {
+                      console.log("Too many failed attempts, using fallback mode")
+                      startFallbackMode()
+                    }
+
+                    // Report error
+                    const errorMessage = `Error playing video: ${error.message || String(error)}`
+                    setError(errorMessage)
+                    if (onError) {
+                      onError(errorMessage)
+                    }
+                  })
+              }
+            } catch (playError) {
+              console.error("Unexpected error in playVideo:", playError)
+              startFallbackMode()
+            }
+          }
+
+          // Execute play attempt
+          playVideo()
+        } catch (loadError) {
+          console.error("Error loading video:", loadError)
+          startFallbackMode()
+
+          // Report error
+          const errorMessage = `Error loading video: ${loadError instanceof Error ? loadError.message : String(loadError)}`
+          setError(errorMessage)
           if (onError) {
-            onError(`Video element error: ${e}`)
+            onError(errorMessage)
           }
         }
       }
@@ -315,13 +407,31 @@ export default function MockPoseTracker({
         onError(errorMessage)
       }
 
-      // Try again with a different approach if we haven't tried too many times
-      if (cameraAttempts < 3) {
-        setCameraAttempts((prev) => prev + 1)
+      // Increment attempt counter
+      setCameraAttempts((prev) => prev + 1)
+
+      // Try with different approach or use fallback
+      if (cameraAttempts < 2) {
+        console.log(`Retrying camera initialization (attempt ${cameraAttempts + 1})`)
         setTimeout(() => startCamera(), 1000)
+      } else {
+        console.log("Too many failed attempts, using fallback mode")
+        startFallbackMode()
       }
     }
-  }, [animateMockPose, cameraFacing, onCameraReady, onError, actualVideoRef, setCanvasDimensions, cameraAttempts])
+  }, [
+    animateMockPose,
+    cameraFacing,
+    onCameraReady,
+    onError,
+    actualVideoRef,
+    setCanvasDimensions,
+    cameraAttempts,
+    startFallbackMode,
+  ])
+
+  // Container ref for fallback mode
+  const containerRef = useRef<HTMLDivElement>(null)
 
   // Initialize camera and mock pose detection
   useEffect(() => {
@@ -342,6 +452,9 @@ export default function MockPoseTracker({
           if (onError) {
             onError(errorMessage)
           }
+
+          // Use fallback mode after error
+          startFallbackMode()
         }
       }
     }
@@ -368,11 +481,11 @@ export default function MockPoseTracker({
       // Remove event listener
       window.removeEventListener("resize", setCanvasDimensions)
     }
-  }, [animateMockPose, setCanvasDimensions, startCamera, onError, actualVideoRef])
+  }, [animateMockPose, setCanvasDimensions, startCamera, onError, actualVideoRef, startFallbackMode])
 
   // Effect to handle camera facing mode changes
   useEffect(() => {
-    if (isInitialized) {
+    if (isInitialized && !useFallbackMode) {
       // Reset video ready state
       setVideoReady(false)
 
@@ -384,7 +497,7 @@ export default function MockPoseTracker({
       // Restart camera with new facing mode
       startCamera()
     }
-  }, [cameraFacing, isInitialized, startCamera])
+  }, [cameraFacing, isInitialized, startCamera, useFallbackMode])
 
   // Add resize event listener
   useEffect(() => {
@@ -395,14 +508,16 @@ export default function MockPoseTracker({
   }, [setCanvasDimensions])
 
   return (
-    <div className="relative w-full h-full">
-      <video
-        ref={actualVideoRef}
-        className="absolute inset-0 w-full h-full object-cover bg-black"
-        playsInline
-        autoPlay
-        muted
-      />
+    <div className="relative w-full h-full" ref={containerRef}>
+      {!useFallbackMode && (
+        <video
+          ref={actualVideoRef}
+          className="absolute inset-0 w-full h-full object-cover bg-black"
+          playsInline
+          autoPlay
+          muted
+        />
+      )}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" />
 
       {error && !onError && (

@@ -15,6 +15,7 @@ const config = {
       colors: {
         tnua: {
           green: "#00E676",
+          neon: "#00E0FF",
           dark: "#121212",
           gray: "#2A2A2A",
           light: "#F5F5F5",
@@ -73,6 +74,10 @@ const config = {
           "50%": {
             boxShadow: "0 0 20px rgba(0, 230, 118, 0.8), 0 0 30px rgba(0, 230, 118, 0.5)",
           },
+        },
+        shrink: {
+          from: { width: "100%" },
+          to: { width: "0%" },
         },
       },
       animation: {

@@ -30,27 +30,27 @@ export default function ExerciseInstructions({ exercise, onClose }: ExerciseInst
         {
           instruction: "Stand with feet shoulder-width apart",
           tip: "Keep your feet parallel or slightly turned out",
-          image: "/images/squat-step1.jpg",
+          image: "/placeholder.svg?key=2pvme",
         },
         {
           instruction: "Keep your back straight and look forward",
           tip: "Maintain a lifted chest and neutral spine",
-          image: "/images/squat-step2.jpg",
+          image: "/placeholder.svg?key=jlhve",
         },
         {
           instruction: "Lower your hips back and down",
           tip: "Imagine sitting back into a chair behind you",
-          image: "/images/squat-step3.jpg",
+          image: "/person-squatting.png",
         },
         {
           instruction: "Lower until thighs are parallel to the floor",
           tip: "Make sure your knees don't go past your toes",
-          image: "/images/squat-step4.jpg",
+          image: "/placeholder.svg?key=j09oq",
         },
         {
           instruction: "Push through your heels to return to standing",
           tip: "Breathe in as you lower, out as you rise",
-          image: "/images/squat-step5.jpg",
+          image: "/placeholder.svg?key=eybo1",
         },
       ],
     },
@@ -64,7 +64,7 @@ export default function ExerciseInstructions({ exercise, onClose }: ExerciseInst
       {
         instruction: "Stand in the starting position",
         tip: "Maintain proper posture",
-        image: "/images/default-exercise.jpg",
+        image: "/placeholder.svg?key=z6gd7",
       },
     ],
   }
@@ -118,12 +118,9 @@ export default function ExerciseInstructions({ exercise, onClose }: ExerciseInst
         {/* Step image */}
         <div className="relative flex-1 mb-4 rounded-2xl overflow-hidden bg-gray-900 flex items-center justify-center">
           <img
-            src={currentStepData.image || "/images/workout-tracking.png"}
+            src={currentStepData.image || "/placeholder.svg"}
             alt={`Step ${currentStep + 1}`}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              e.currentTarget.src = "/images/workout-tracking.png"
-            }}
           />
 
           {/* Step number */}
