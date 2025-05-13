@@ -1,98 +1,136 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-import { motion } from "framer-motion"
-import { ArrowRight, Camera } from "lucide-react"
-import TnuaLogo from "@/components/ui/tnua-logo"
-import HamburgerMenu from "@/components/hamburger-menu"
-import { useState } from "react"
-import CameraPermissionRequest from "@/components/camera-permission-request"
+import { useState, useRef } from "react"
+import WorkoutCamera from "@/components/workout-camera"
+import type { PoseData } from "@/services/pose-detection-service"
+import type { ExerciseState } from "@/services/exercise-detection-service"
+import type { EmergencyState } from "@/services/emergency-detection-service"
+import { motion, AnimatePresence } from "framer-motion"
 
-export default function HomePage() {
-  const router = useRouter()
-  const [showCameraPermission, setShowCameraPermission] = useState(false)
+export default function Home() {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [poseDetected, setPoseDetected] = useState(false)
+  const [exerciseState, setExerciseState] = useState<ExerciseState | null>(null)
+  const [emergencyState, setEmergencyState] = useState<EmergencyState | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
-  const handleStartWorkout = () => {
-    router.push("/workout")
+  const handlePoseDetection = (detected: boolean, poses: PoseData[]) => {
+    setPoseDetected(detected)
   }
 
-  const handleRequestCamera = () => {
-    setShowCameraPermission(true)
+  const handleExerciseDetected = (state: ExerciseState) => {
+    setExerciseState(state)
   }
 
-  const handlePermissionGranted = () => {
-    setShowCameraPermission(false)
-    // Navigate to workout page after permission is granted
-    router.push("/workout")
+  const handleEmergencyDetected = (state: EmergencyState) => {
+    setEmergencyState(state)
+  }
+
+  const handleError = (errorMessage: string) => {
+    setError(errorMessage)
+  }
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-tnua-dark text-white flex flex-col relative overflow-hidden">
-      {/* Background image */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src="/images/workout-tracking.jpg"
-          alt="Workout with motion tracking"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-tnua-dark via-tnua-dark/70 to-tnua-dark/30" />
-      </div>
-
-      {/* Hamburger Menu */}
-      <HamburgerMenu />
-
+    <main className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
       {/* Header */}
-      <header className="p-6 z-10">
-        <TnuaLogo size="md" />
+      <header className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-gray-800">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            TNUA Fitness
+          </h1>
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+          >
+            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 px-6 pb-32 flex flex-col items-center justify-end z-10 mt-auto">
-        <motion.h1
-          className="text-4xl font-bold mb-2 text-center"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          Smart Movement. <span className="text-tnua-green">Real Protection.</span>
-        </motion.h1>
+      <div className="container mx-auto px-4 pt-24 pb-8">
+        <div className="relative w-full max-w-6xl mx-auto aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl">
+          <WorkoutCamera
+            videoRef={videoRef}
+            onPoseDetectionStatus={handlePoseDetection}
+            onExerciseDetected={handleExerciseDetected}
+            onEmergencyDetected={handleEmergencyDetected}
+            onError={handleError}
+          />
 
-        <motion.p
-          className="text-gray-300 text-lg mb-16 max-w-md text-center"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-        >
-          AI-powered fitness coach that improves your technique and keeps you safe while working out alone.
-        </motion.p>
+          {/* Exercise info overlay */}
+          <AnimatePresence>
+            {exerciseState && exerciseState.type !== "unknown" && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="absolute top-4 left-4 bg-black/60 backdrop-blur-md p-4 rounded-xl text-white shadow-lg"
+              >
+                <h3 className="text-lg font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                  {exerciseState.type.replace("_", " ").toUpperCase()}
+                </h3>
+                <div className="space-y-2">
+                  <p className="flex items-center gap-2">
+                    <span className="text-gray-400">Reps:</span>
+                    <span className="font-semibold">{exerciseState.repCount}</span>
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <span className="text-gray-400">Form Score:</span>
+                    <span className="font-semibold">{exerciseState.formScore.toFixed(0)}%</span>
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        <motion.div
-          className="w-full max-w-xs flex flex-col gap-3"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <button onClick={handleStartWorkout} className="tnua-button-primary w-full py-4 text-lg">
-            Start Workout <ArrowRight className="ml-2" size={18} />
-          </button>
+          {/* Emergency alert overlay */}
+          <AnimatePresence>
+            {emergencyState && emergencyState.isActive && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-red-500/90 backdrop-blur-md flex items-center justify-center"
+              >
+                <div className="text-center text-white p-8 rounded-2xl bg-black/30">
+                  <h2 className="text-4xl font-bold mb-4">Emergency Detected!</h2>
+                  <p className="text-2xl mb-2">Type: {emergencyState.type.toUpperCase()}</p>
+                  <p className="text-xl">Confidence: {(emergencyState.confidence * 100).toFixed(0)}%</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <button
-            onClick={handleRequestCamera}
-            className="tnua-button-secondary w-full py-4 text-lg flex items-center justify-center"
-          >
-            <Camera className="mr-2" size={18} />
-            Test Camera Access
-          </button>
-        </motion.div>
-      </main>
-
-      {/* Camera Permission Request Modal */}
-      {showCameraPermission && (
-        <CameraPermissionRequest
-          onPermissionGranted={handlePermissionGranted}
-          onCancel={() => setShowCameraPermission(false)}
-        />
-      )}
-    </div>
+          {/* Error overlay */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center"
+              >
+                <div className="text-center text-white p-8 rounded-2xl bg-red-500/30">
+                  <h2 className="text-3xl font-bold mb-4">Error</h2>
+                  <p className="text-xl">{error}</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </main>
   )
 }

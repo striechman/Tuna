@@ -10,11 +10,44 @@ export interface PoseData {
   }>
 }
 
+// Define MediaPipe types
+interface MediaPipePose {
+  setOptions(options: {
+    modelComplexity: number
+    smoothLandmarks: boolean
+    enableSegmentation: boolean
+    smoothSegmentation: boolean
+    minDetectionConfidence: number
+    minTrackingConfidence: number
+  }): void
+  onResults(callback: (results: {
+    poseLandmarks: Array<{
+      x: number
+      y: number
+      z: number
+      visibility: number
+    }>
+    poseWorldLandmarks?: Array<{
+      x: number
+      y: number
+      z: number
+      visibility: number
+    }>
+  }) => void): void
+  send(options: { image: HTMLVideoElement }): Promise<void>
+}
+
+interface MediaPipePoseConstructor {
+  new (options: {
+    locateFile: (file: string) => string
+  }): MediaPipePose
+}
+
 // Define service state
 export type PoseDetectionState = {
   isInitialized: boolean
   isLoading: boolean
-  model: any | null
+  model: MediaPipePose | null
   error: string | null
   useFallback: boolean
 }
@@ -59,73 +92,104 @@ class PoseDetectionService {
         throw new Error("PoseDetectionService must be used in a browser environment")
       }
 
-      // Always use fallback for now to avoid script loading issues
-      this.state.useFallback = true
-      return this.initializeFallback()
+      // Load MediaPipe Pose
+      const pose = await import("@mediapipe/pose")
+      const camera = await import("@mediapipe/camera_utils")
+      const drawingUtils = await import("@mediapipe/drawing_utils")
+
+      // Initialize MediaPipe Pose
+      this.state.model = new pose.Pose({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+        },
+      })
+
+      // Configure MediaPipe Pose
+      this.state.model.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        enableSegmentation: true,
+        smoothSegmentation: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      })
+
+      // Set up pose detection callback
+      this.state.model.onResults((results) => {
+        if (results.poseLandmarks) {
+          const poseData: PoseData = {
+            score: results.poseWorldLandmarks ? results.poseWorldLandmarks[0].visibility : 1,
+            keypoints: results.poseLandmarks.map((landmark, index) => ({
+              x: landmark.x,
+              y: landmark.y,
+              z: landmark.z,
+              score: landmark.visibility || 1,
+              name: this.getKeypointName(index),
+            })),
+          }
+
+          // Apply smoothing
+          if (this.lastPoses.length > 0) {
+            const smoothedPose = this.smoothPoses(this.lastPoses[0], poseData)
+            this.lastPoses = [smoothedPose]
+            this.eventListeners.onPoseDetected([smoothedPose])
+          } else {
+            this.lastPoses = [poseData]
+            this.eventListeners.onPoseDetected([poseData])
+          }
+        }
+      })
+
+      this.state.isInitialized = true
+      this.state.isLoading = false
+      return true
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to initialize pose detection"
       this.state.error = errorMessage
       this.state.isLoading = false
       this.eventListeners.onError(errorMessage)
-
-      // Use fallback implementation in case of error
-      return this.initializeFallback()
+      return false
     }
   }
 
-  // Initialize a fallback implementation
-  private initializeFallback(): boolean {
-    console.log("Using fallback pose detection implementation")
-    this.state.isInitialized = true
-    this.state.isLoading = false
-    this.state.useFallback = true
-    return true
-  }
-
-  // Generate mock poses for testing or fallback
-  private generateMockPoses(): PoseData[] {
-    const now = Date.now() / 1000
-    const baseKeypoints = [
-      { name: "nose", x: 0.5, y: 0.2, score: 0.95 },
-      { name: "left_eye", x: 0.45, y: 0.18, score: 0.9 },
-      { name: "right_eye", x: 0.55, y: 0.18, score: 0.9 },
-      { name: "left_ear", x: 0.4, y: 0.2, score: 0.85 },
-      { name: "right_ear", x: 0.6, y: 0.2, score: 0.85 },
-      { name: "left_shoulder", x: 0.35, y: 0.3, score: 0.9 },
-      { name: "right_shoulder", x: 0.65, y: 0.3, score: 0.9 },
-      { name: "left_elbow", x: 0.3, y: 0.4 + Math.sin(now * 0.5) * 0.03, score: 0.85 },
-      { name: "right_elbow", x: 0.7, y: 0.4 + Math.sin(now * 0.5 + Math.PI) * 0.03, score: 0.85 },
-      { name: "left_wrist", x: 0.25, y: 0.5 + Math.sin(now * 0.5) * 0.03, score: 0.8 },
-      { name: "right_wrist", x: 0.75, y: 0.5 + Math.sin(now * 0.5 + Math.PI) * 0.03, score: 0.8 },
-      { name: "left_hip", x: 0.4, y: 0.6, score: 0.9 },
-      { name: "right_hip", x: 0.6, y: 0.6, score: 0.9 },
-      { name: "left_knee", x: 0.4, y: 0.75 + Math.sin(now * 0.3) * 0.01, score: 0.85 },
-      { name: "right_knee", x: 0.6, y: 0.75 + Math.sin(now * 0.3 + Math.PI) * 0.01, score: 0.85 },
-      { name: "left_ankle", x: 0.4, y: 0.9 + Math.sin(now * 0.3) * 0.01, score: 0.8 },
-      { name: "right_ankle", x: 0.6, y: 0.9 + Math.sin(now * 0.3 + Math.PI) * 0.01, score: 0.8 },
+  // Get keypoint name from index
+  private getKeypointName(index: number): string {
+    const keypointNames = [
+      "nose",
+      "left_eye_inner",
+      "left_eye",
+      "left_eye_outer",
+      "right_eye_inner",
+      "right_eye",
+      "right_eye_outer",
+      "left_ear",
+      "right_ear",
+      "mouth_left",
+      "mouth_right",
+      "left_shoulder",
+      "right_shoulder",
+      "left_elbow",
+      "right_elbow",
+      "left_wrist",
+      "right_wrist",
+      "left_pinky",
+      "right_pinky",
+      "left_index",
+      "right_index",
+      "left_thumb",
+      "right_thumb",
+      "left_hip",
+      "right_hip",
+      "left_knee",
+      "right_knee",
+      "left_ankle",
+      "right_ankle",
+      "left_heel",
+      "right_heel",
+      "left_foot_index",
+      "right_foot_index",
     ]
-
-    const newPoses = [
-      {
-        score: 0.9,
-        keypoints: baseKeypoints.map((keypoint) => ({
-          ...keypoint,
-          // Add very slight random movement (much less than before)
-          x: keypoint.x + (Math.random() - 0.5) * 0.005,
-          y: keypoint.y + (Math.random() - 0.5) * 0.005,
-        })),
-      },
-    ]
-
-    // Apply smoothing if we have previous poses
-    if (this.lastPoses.length > 0) {
-      const smoothedPoses = this.smoothPoses(this.lastPoses[0], newPoses[0])
-      this.lastPoses = [smoothedPoses]
-      return [smoothedPoses]
-    }
-
-    this.lastPoses = newPoses
-    return newPoses
+    return keypointNames[index] || `keypoint_${index}`
   }
 
   // Smooth poses to reduce jitter
@@ -136,6 +200,7 @@ class PoseDetectionService {
         ...keypoint,
         x: prevKeypoint.x * this.smoothingFactor + keypoint.x * (1 - this.smoothingFactor),
         y: prevKeypoint.y * this.smoothingFactor + keypoint.y * (1 - this.smoothingFactor),
+        z: keypoint.z ? prevKeypoint.z! * this.smoothingFactor + keypoint.z * (1 - this.smoothingFactor) : undefined,
       }
     })
 
@@ -205,50 +270,43 @@ class PoseDetectionService {
     }
   }
 
-  // Stop the camera and detection
+  // Stop camera and cleanup
   stopCamera(): void {
-    // Cancel animation frame
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame)
       this.animationFrame = null
     }
 
-    // Stop and clean up any existing stream
     if (this.stream) {
       this.stream.getTracks().forEach((track) => track.stop())
       this.stream = null
     }
 
-    // Clear video source
-    if (this.videoElement && this.videoElement.srcObject) {
+    if (this.videoElement) {
       this.videoElement.srcObject = null
     }
   }
 
-  // Start the pose detection loop
+  // Start pose detection loop
   private startDetection(): void {
-    if (!this.videoElement) return
+    if (!this.videoElement || !this.state.model) return
 
-    // For fallback mode, use animation frame for smoother animation
-    const detectPoses = () => {
-      const poses = this.generateMockPoses()
-      this.eventListeners.onPoseDetected(poses)
+    const detectPoses = async () => {
+      if (!this.videoElement || !this.state.model) return
+
+      await this.state.model.send({ image: this.videoElement })
       this.animationFrame = requestAnimationFrame(detectPoses)
     }
-    this.animationFrame = requestAnimationFrame(detectPoses)
+
+    detectPoses()
   }
 
-  // Subscribe to pose detection events
+  // Subscribe to events
   subscribe(events: Partial<PoseDetectionEvents>): void {
-    if (events.onPoseDetected) {
-      this.eventListeners.onPoseDetected = events.onPoseDetected
-    }
-    if (events.onError) {
-      this.eventListeners.onError = events.onError
-    }
+    this.eventListeners = { ...this.eventListeners, ...events }
   }
 
-  // Get the current service state
+  // Get current state
   getState(): PoseDetectionState {
     return { ...this.state }
   }
@@ -256,10 +314,12 @@ class PoseDetectionService {
   // Change camera facing mode
   async changeCameraFacingMode(facingMode: "user" | "environment"): Promise<boolean> {
     if (!this.videoElement) return false
-    return this.startCamera(this.videoElement, facingMode)
+
+    const success = await this.startCamera(this.videoElement, facingMode)
+    return success
   }
 }
 
-// Create a singleton instance
+// Export singleton instance
 const poseDetectionService = new PoseDetectionService()
 export default poseDetectionService

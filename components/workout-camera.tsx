@@ -2,32 +2,60 @@
 
 import type React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Camera, RotateCcw, ZoomIn, ZoomOut, Minus, Plus } from "lucide-react"
+import { Camera, RotateCcw, ZoomIn, ZoomOut, Video, Smartphone } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import AnimatedPreloader from "./animated-preloader"
 import PoseRenderer from "./pose-renderer"
 import poseDetectionService, { type PoseData } from "@/services/pose-detection-service"
+import exerciseDetectionService, { type ExerciseState } from "@/services/exercise-detection-service"
+import emergencyDetectionService, { type EmergencyState } from "@/services/emergency-detection-service"
 
 interface WorkoutCameraProps {
   videoRef?: React.RefObject<HTMLVideoElement>
   onPoseDetectionStatus?: (detected: boolean, landmarks: PoseData[]) => void
+  onExerciseDetected?: (state: ExerciseState) => void
+  onEmergencyDetected?: (state: EmergencyState) => void
   onError?: (error: string) => void
 }
 
-export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError }: WorkoutCameraProps) {
+type CameraType = "webcam" | "mobile"
+
+export default function WorkoutCamera({
+  videoRef,
+  onPoseDetectionStatus,
+  onExerciseDetected,
+  onEmergencyDetected,
+  onError,
+}: WorkoutCameraProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("environment")
   const [zoomLevel, setZoomLevel] = useState(1)
-  const [showControls, setShowControls] = useState(true) // Start with controls visible
+  const [showControls, setShowControls] = useState(true)
   const [cameraReady, setCameraReady] = useState(false)
   const [poses, setPoses] = useState<PoseData[]>([])
+  const [cameraType, setCameraType] = useState<CameraType>("webcam")
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
 
   // Internal refs
   const internalVideoRef = useRef<HTMLVideoElement>(null)
   const actualVideoRef = videoRef || internalVideoRef
   const containerRef = useRef<HTMLDivElement>(null)
   const zoomContainerRef = useRef<HTMLDivElement>(null)
+
+  // Get available cameras
+  useEffect(() => {
+    const getCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter(device => device.kind === "videoinput")
+        setAvailableCameras(videoDevices)
+      } catch (err) {
+        console.error("Error getting cameras:", err)
+      }
+    }
+    getCameras()
+  }, [])
 
   // Toggle camera
   const toggleCamera = useCallback(async () => {
@@ -40,6 +68,32 @@ export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError
       console.error("Error toggling camera:", error)
     }
   }, [cameraFacing])
+
+  // Switch camera type
+  const switchCameraType = useCallback(async () => {
+    const newType = cameraType === "webcam" ? "mobile" : "webcam"
+    setCameraType(newType)
+    
+    // Reset camera
+    poseDetectionService.stopCamera()
+    setCameraReady(false)
+    setIsLoading(true)
+
+    try {
+      if (actualVideoRef.current) {
+        const success = await poseDetectionService.startCamera(
+          actualVideoRef.current,
+          newType === "mobile" ? "environment" : "user"
+        )
+        if (success) {
+          setCameraReady(true)
+          setTimeout(() => setIsLoading(false), 1000)
+        }
+      }
+    } catch (error) {
+      console.error("Error switching camera type:", error)
+    }
+  }, [cameraType, actualVideoRef])
 
   // Zoom controls
   const zoomIn = useCallback(() => {
@@ -58,18 +112,21 @@ export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError
     }
   }, [zoomLevel])
 
-  // Initialize pose detection service
+  // Initialize services
   useEffect(() => {
+    // Initialize pose detection service
     poseDetectionService.subscribe({
       onPoseDetected: (detectedPoses) => {
-        // Check if valid poses were detected
         const hasValidPose =
           detectedPoses.length > 0 && detectedPoses[0].keypoints.length > 0 && detectedPoses[0].score > 0.2
 
-        // Update poses state
         setPoses(detectedPoses)
 
-        // Notify parent component
+        detectedPoses.forEach((pose) => {
+          exerciseDetectionService.processPose(pose)
+          emergencyDetectionService.processPose(pose)
+        })
+
         if (onPoseDetectionStatus) {
           onPoseDetectionStatus(hasValidPose, detectedPoses)
         }
@@ -77,19 +134,41 @@ export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError
       onError: (errorMessage) => {
         console.error("Pose detection error:", errorMessage)
         setError(errorMessage)
-
-        // Pass error to parent component if callback exists
-        if (onError) {
-          onError(errorMessage)
-        }
+        if (onError) onError(errorMessage)
       },
     })
 
-    // Initialize the service
-    poseDetectionService
-      .initialize()
-      .then((success) => {
-        if (!success) {
+    // Initialize exercise detection service
+    exerciseDetectionService.subscribe({
+      onExerciseDetected: (state) => {
+        if (onExerciseDetected) onExerciseDetected(state)
+      },
+      onError: (errorMessage) => {
+        console.error("Exercise detection error:", errorMessage)
+        if (onError) onError(errorMessage)
+      },
+    })
+
+    // Initialize emergency detection service
+    emergencyDetectionService.subscribe({
+      onEmergencyDetected: (state) => {
+        if (onEmergencyDetected) onEmergencyDetected(state)
+      },
+      onEmergencyResolved: () => {
+        if (onEmergencyDetected) {
+          onEmergencyDetected({ type: "none", confidence: 0, lastDetectionTime: 0, isActive: false })
+        }
+      },
+      onError: (errorMessage) => {
+        console.error("Emergency detection error:", errorMessage)
+        if (onError) onError(errorMessage)
+      },
+    })
+
+    // Initialize the services
+    Promise.all([poseDetectionService.initialize()])
+      .then(([poseSuccess]) => {
+        if (!poseSuccess) {
           setError("Could not initialize pose detection")
         }
       })
@@ -100,36 +179,35 @@ export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError
       })
 
     return () => {
-      // Clean up on unmount
       poseDetectionService.stopCamera()
+      exerciseDetectionService.reset()
+      emergencyDetectionService.reset()
     }
-  }, [onPoseDetectionStatus, onError])
+  }, [onPoseDetectionStatus, onExerciseDetected, onEmergencyDetected, onError])
 
   // Start camera when component mounts
   useEffect(() => {
     let isMounted = true
 
-    // Only try to start camera if we have a video element
     if (!actualVideoRef.current) return
 
-    // Wait a moment before starting camera
     setTimeout(async () => {
       if (!isMounted) return
 
       try {
         setIsLoading(true)
 
-        // Start camera
-        const success = await poseDetectionService.startCamera(actualVideoRef.current, cameraFacing)
+        const success = await poseDetectionService.startCamera(
+          actualVideoRef.current,
+          cameraType === "mobile" ? "environment" : "user"
+        )
 
         if (success) {
-          // Camera started successfully
           setCameraReady(true)
           setTimeout(() => {
             if (isMounted) setIsLoading(false)
           }, 1000)
         } else {
-          // Failed to start camera
           throw new Error("Failed to start camera")
         }
       } catch (err) {
@@ -145,14 +223,7 @@ export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError
       isMounted = false
       poseDetectionService.stopCamera()
     }
-  }, [actualVideoRef, cameraFacing, onError])
-
-  // Restart camera when facing mode changes
-  useEffect(() => {
-    if (cameraReady && actualVideoRef.current) {
-      poseDetectionService.changeCameraFacingMode(cameraFacing)
-    }
-  }, [cameraFacing, cameraReady, actualVideoRef])
+  }, [actualVideoRef, cameraType, onError])
 
   return (
     <div className="relative w-full h-full overflow-hidden" ref={containerRef}>
@@ -198,89 +269,40 @@ export default function WorkoutCamera({ videoRef, onPoseDetectionStatus, onError
           >
             <div className="flex flex-col">
               <button onClick={zoomIn} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel >= 3}>
-                <ZoomIn className="h-6 w-6" />
+                <ZoomIn className="w-5 h-5 text-white" />
               </button>
               <button onClick={zoomOut} className="p-3 hover:bg-gray-800 transition-colors" disabled={zoomLevel <= 1}>
-                <ZoomOut className="h-6 w-6" />
+                <ZoomOut className="w-5 h-5 text-white" />
               </button>
               <button onClick={toggleCamera} className="p-3 hover:bg-gray-800 transition-colors">
-                <RotateCcw className="h-6 w-6" />
+                <RotateCcw className="w-5 h-5 text-white" />
+              </button>
+              <button onClick={switchCameraType} className="p-3 hover:bg-gray-800 transition-colors">
+                {cameraType === "webcam" ? (
+                  <Smartphone className="w-5 h-5 text-white" />
+                ) : (
+                  <Video className="w-5 h-5 text-white" />
+                )}
               </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Zoom slider (vertical) */}
-      <AnimatePresence>
-        {showControls && (
-          <motion.div
-            className="absolute bottom-32 left-4 z-30 bg-black/60 backdrop-blur-md rounded-full p-2 h-40"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="flex flex-col h-full items-center justify-between">
-              <button
-                onClick={zoomIn}
-                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                disabled={zoomLevel >= 3}
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-
-              <div className="flex-1 w-1 bg-gray-700 rounded-full my-2 relative">
-                <div
-                  className="absolute bottom-0 left-0 right-0 bg-white rounded-full"
-                  style={{
-                    height: `${((zoomLevel - 1) / 2) * 100}%`,
-                  }}
-                />
-                <div
-                  className="absolute w-4 h-4 bg-white rounded-full left-1/2 transform -translate-x-1/2 -translate-y-1/2 border-2 border-gray-800"
-                  style={{
-                    bottom: `${((zoomLevel - 1) / 2) * 100}%`,
-                  }}
-                />
-              </div>
-
-              <button
-                onClick={zoomOut}
-                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                disabled={zoomLevel <= 1}
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Toggle controls button */}
-      <button
-        onClick={() => setShowControls((prev) => !prev)}
-        className="absolute bottom-16 right-4 z-30 bg-black/60 backdrop-blur-md p-3 rounded-full"
-        aria-label="Camera controls"
-      >
-        <Camera className="h-6 w-6" />
-      </button>
 
       {/* Error message */}
-      {error && !onError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm z-40">
-          <div className="text-center p-6 bg-gray-900 rounded-lg max-w-md mx-auto">
-            <p className="text-xl font-medium mb-4 text-red-400">Camera loading error</p>
-            <p className="text-gray-300 mb-6">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-tnua-green text-black font-bold py-3 px-6 rounded-full"
-            >
-              Try again
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg z-30"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
