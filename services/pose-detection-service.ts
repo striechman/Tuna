@@ -1,13 +1,15 @@
+import { Pose } from '@mediapipe/pose';
+import { Camera } from '@mediapipe/camera_utils';
+
 // Define types for pose data
 export interface PoseData {
-  score: number
-  keypoints: Array<{
-    x: number
-    y: number
-    z?: number
-    score: number
-    name: string
-  }>
+  keypoints: {
+    x: number;
+    y: number;
+    z: number;
+    visibility: number;
+  }[];
+  score: number;
 }
 
 // Define MediaPipe types
@@ -54,11 +56,11 @@ export type PoseDetectionState = {
 
 // Define events that can be listened to
 export type PoseDetectionEvents = {
-  onPoseDetected: (poses: PoseData[]) => void
+  onPoseDetected: (pose: PoseData) => void
   onError: (error: string) => void
 }
 
-class PoseDetectionService {
+export class PoseDetectionService {
   private state: PoseDetectionState = {
     isInitialized: false,
     isLoading: false,
@@ -67,147 +69,55 @@ class PoseDetectionService {
     useFallback: false,
   }
 
-  private eventListeners: PoseDetectionEvents = {
-    onPoseDetected: () => {},
-    onError: () => {},
-  }
-
+  private eventListeners: Map<keyof PoseDetectionEvents, Set<Function>> = new Map();
   private videoElement: HTMLVideoElement | null = null
   private stream: MediaStream | null = null
   private animationFrame: number | null = null
   private lastPoses: PoseData[] = []
   private smoothingFactor = 0.7 // Higher values = more smoothing
 
-  // Initialize the service
-  async initialize(): Promise<boolean> {
-    if (this.state.isInitialized) return true
-    if (this.state.isLoading) return false
+  constructor() {
+    this.initializePose();
+  }
 
-    this.state.isLoading = true
-    this.state.error = null
-
+  private async initializePose() {
     try {
-      // Check if we're in a browser environment
-      if (typeof window === "undefined") {
-        throw new Error("PoseDetectionService must be used in a browser environment")
-      }
-
-      // Load MediaPipe Pose
-      const pose = await import("@mediapipe/pose")
-      const camera = await import("@mediapipe/camera_utils")
-      const drawingUtils = await import("@mediapipe/drawing_utils")
-
-      // Initialize MediaPipe Pose
-      this.state.model = new pose.Pose({
+      this.state.model = new Pose({
         locateFile: (file) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        },
-      })
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }
+      });
 
-      // Configure MediaPipe Pose
-      this.state.model.setOptions({
+      this.state.model?.setOptions({
         modelComplexity: 1,
         smoothLandmarks: true,
         enableSegmentation: true,
         smoothSegmentation: true,
         minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      })
+        minTrackingConfidence: 0.5
+      });
 
-      // Set up pose detection callback
-      this.state.model.onResults((results) => {
-        if (results.poseLandmarks) {
-          const poseData: PoseData = {
-            score: results.poseWorldLandmarks ? results.poseWorldLandmarks[0].visibility : 1,
-            keypoints: results.poseLandmarks.map((landmark, index) => ({
-              x: landmark.x,
-              y: landmark.y,
-              z: landmark.z,
-              score: landmark.visibility || 1,
-              name: this.getKeypointName(index),
-            })),
-          }
-
-          // Apply smoothing
-          if (this.lastPoses.length > 0) {
-            const smoothedPose = this.smoothPoses(this.lastPoses[0], poseData)
-            this.lastPoses = [smoothedPose]
-            this.eventListeners.onPoseDetected([smoothedPose])
-          } else {
-            this.lastPoses = [poseData]
-            this.eventListeners.onPoseDetected([poseData])
-          }
-        }
-      })
-
-      this.state.isInitialized = true
-      this.state.isLoading = false
-      return true
+      this.state.model?.onResults(this.handlePoseResults.bind(this));
+      this.state.isInitialized = true;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to initialize pose detection"
-      this.state.error = errorMessage
-      this.state.isLoading = false
-      this.eventListeners.onError(errorMessage)
-      return false
+      this.handleError('Failed to initialize pose detection');
     }
   }
 
-  // Get keypoint name from index
-  private getKeypointName(index: number): string {
-    const keypointNames = [
-      "nose",
-      "left_eye_inner",
-      "left_eye",
-      "left_eye_outer",
-      "right_eye_inner",
-      "right_eye",
-      "right_eye_outer",
-      "left_ear",
-      "right_ear",
-      "mouth_left",
-      "mouth_right",
-      "left_shoulder",
-      "right_shoulder",
-      "left_elbow",
-      "right_elbow",
-      "left_wrist",
-      "right_wrist",
-      "left_pinky",
-      "right_pinky",
-      "left_index",
-      "right_index",
-      "left_thumb",
-      "right_thumb",
-      "left_hip",
-      "right_hip",
-      "left_knee",
-      "right_knee",
-      "left_ankle",
-      "right_ankle",
-      "left_heel",
-      "right_heel",
-      "left_foot_index",
-      "right_foot_index",
-    ]
-    return keypointNames[index] || `keypoint_${index}`
-  }
+  private handlePoseResults(results: any) {
+    if (!results.poseLandmarks) return;
 
-  // Smooth poses to reduce jitter
-  private smoothPoses(previousPose: PoseData, currentPose: PoseData): PoseData {
-    const smoothedKeypoints = currentPose.keypoints.map((keypoint, index) => {
-      const prevKeypoint = previousPose.keypoints[index]
-      return {
-        ...keypoint,
-        x: prevKeypoint.x * this.smoothingFactor + keypoint.x * (1 - this.smoothingFactor),
-        y: prevKeypoint.y * this.smoothingFactor + keypoint.y * (1 - this.smoothingFactor),
-        z: keypoint.z ? prevKeypoint.z! * this.smoothingFactor + keypoint.z * (1 - this.smoothingFactor) : undefined,
-      }
-    })
+    const poseData: PoseData = {
+      keypoints: results.poseLandmarks.map((landmark: any) => ({
+        x: landmark.x,
+        y: landmark.y,
+        z: landmark.z,
+        visibility: landmark.visibility
+      })),
+      score: results.poseWorldLandmarks ? 1 : 0
+    };
 
-    return {
-      ...currentPose,
-      keypoints: smoothedKeypoints,
-    }
+    this.notifyListeners('onPoseDetected', poseData);
   }
 
   // Start video and pose detection
@@ -218,7 +128,7 @@ class PoseDetectionService {
     this.videoElement = videoElement
 
     if (!this.state.isInitialized) {
-      await this.initialize()
+      await this.initializePose();
     }
 
     try {
@@ -265,7 +175,7 @@ class PoseDetectionService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to start camera"
       this.state.error = errorMessage
-      this.eventListeners.onError(errorMessage)
+      this.eventListeners.get('onError')?.forEach(callback => callback(errorMessage))
       return false
     }
   }
@@ -302,8 +212,11 @@ class PoseDetectionService {
   }
 
   // Subscribe to events
-  subscribe(events: Partial<PoseDetectionEvents>): void {
-    this.eventListeners = { ...this.eventListeners, ...events }
+  subscribe(event: keyof PoseDetectionEvents, callback: Function): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, new Set());
+    }
+    this.eventListeners.get(event)?.add(callback);
   }
 
   // Get current state
@@ -317,6 +230,14 @@ class PoseDetectionService {
 
     const success = await this.startCamera(this.videoElement, facingMode)
     return success
+  }
+
+  private notifyListeners(event: keyof PoseDetectionEvents, data: any) {
+    this.eventListeners.get(event)?.forEach(callback => callback(data));
+  }
+
+  private handleError(error: string) {
+    this.notifyListeners('onError', error);
   }
 }
 
